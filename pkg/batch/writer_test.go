@@ -175,7 +175,8 @@ func TestBlockchainError(t *testing.T) {
 func TestProcessBatchError(t *testing.T) {
 
 	ctx := newMockContext()
-	ctx.ProtocolClient.Protocol = protocol.Protocol{
+
+	ctx.ProtocolClient.Protocol = &protocol.Protocol{
 		HashAlgorithmInMultiHashCode: 101, // non-existent hash code
 		MaxOperationsPerBatch:        2,
 	}

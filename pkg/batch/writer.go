@@ -250,7 +250,12 @@ func (r *Writer) processOperations(operations [][]byte) error {
 		return err
 	}
 
-	anchorBytes, err := r.opsHandler.CreateAnchorFile(operations, batchAddr, r.context.Protocol().Current().HashAlgorithmInMultiHashCode)
+	p, err := r.context.Protocol().Current()
+	if err != nil {
+		return err
+	}
+
+	anchorBytes, err := r.opsHandler.CreateAnchorFile(operations, batchAddr, p.HashAlgorithmInMultiHashCode)
 	if err != nil {
 		return err
 	}

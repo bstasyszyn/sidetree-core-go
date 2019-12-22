@@ -68,8 +68,13 @@ func (m *MockDocumentHandler) ProcessOperation(operation batch.Operation) (docum
 		return nil, nil
 	}
 
+	p, err := m.Protocol().Current()
+	if err != nil {
+		return nil, err
+	}
+
 	// create operation returns document
-	id, err := docutil.CalculateID(m.Namespace(), operation.EncodedPayload, m.Protocol().Current().HashAlgorithmInMultiHashCode)
+	id, err := docutil.CalculateID(m.Namespace(), operation.EncodedPayload, p.HashAlgorithmInMultiHashCode)
 	if err != nil {
 		return nil, err
 	}

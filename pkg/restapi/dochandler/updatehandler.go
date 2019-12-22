@@ -74,12 +74,17 @@ func (h *UpdateHandler) doUpdate(request *model.Request) (document.Document, err
 }
 
 func (h *UpdateHandler) getOperation(request *model.Request) (batch.Operation, error) {
+	p, err := h.processor.Protocol().Current()
+	if err != nil {
+		return batch.Operation{}, err
+	}
+
 	operation := batch.Operation{
 		EncodedPayload:               request.Payload,
 		Signature:                    request.Signature,
 		SigningKeyID:                 request.Header.Kid,
 		Type:                         getOperationType(request.Header.Operation),
-		HashAlgorithmInMultiHashCode: h.processor.Protocol().Current().HashAlgorithmInMultiHashCode,
+		HashAlgorithmInMultiHashCode: p.HashAlgorithmInMultiHashCode,
 	}
 
 	switch operation.Type {

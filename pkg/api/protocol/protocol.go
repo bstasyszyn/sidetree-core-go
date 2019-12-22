@@ -22,5 +22,5 @@ type Protocol struct {
 type Client interface {
 
 	// Current returns latest version of protocol
-	Current() Protocol
+	Current() (*Protocol, error)
 }

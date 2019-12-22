@@ -140,8 +140,13 @@ func (r *DocumentHandler) resolveRequestWithDocument(encodedDocument string) (do
 		return nil, err
 	}
 
+	p, err := r.protocol.Current()
+	if err != nil {
+		return nil, err
+	}
+
 	// verify size of each operation does not exceed the maximum allowed limit
-	if len(docBytes) > int(r.protocol.Current().MaxOperationByteSize) {
+	if len(docBytes) > int(p.MaxOperationByteSize) {
 		return nil, errors.New("operation byte size exceeds protocol max operation byte size")
 	}
 
@@ -175,8 +180,12 @@ func (r *DocumentHandler) addToBatch(operation batch.Operation) error {
 }
 
 func (r *DocumentHandler) getDoc(encodedPayload string) (document.Document, error) {
+	p, err := r.protocol.Current()
+	if err != nil {
+		return nil, err
+	}
 
-	id, err := docutil.CalculateID(r.namespace, encodedPayload, r.protocol.Current().HashAlgorithmInMultiHashCode)
+	id, err := docutil.CalculateID(r.namespace, encodedPayload, p.HashAlgorithmInMultiHashCode)
 	if err != nil {
 		return nil, err
 	}
@@ -203,8 +212,13 @@ func (r *DocumentHandler) validateOperation(operation batch.Operation) error {
 		return err
 	}
 
+	p, err := r.protocol.Current()
+	if err != nil {
+		return err
+	}
+
 	// check maximum operation size against protocol
-	if len(payload) > int(r.protocol.Current().MaxOperationByteSize) {
+	if len(payload) > int(p.MaxOperationByteSize) {
 		return errors.New("operation byte size exceeds protocol max operation byte size")
 	}
 

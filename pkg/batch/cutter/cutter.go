@@ -68,7 +68,13 @@ func (r *BatchCutter) Cut(force bool) (operations [][]byte, pending uint) {
 		return nil, 0
 	}
 
-	maxOperationsPerBatch := r.client.Current().MaxOperationsPerBatch
+	p, err := r.client.Current()
+	if err != nil {
+		logger.Errorf("Error getting current protocol: %s", err)
+		return nil, pending
+	}
+
+	maxOperationsPerBatch := p.MaxOperationsPerBatch
 	if !force && pendingSize < maxOperationsPerBatch {
 		return nil, pendingSize
 	}

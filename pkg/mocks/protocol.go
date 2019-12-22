@@ -12,14 +12,14 @@ import (
 
 // MockProtocolClient mocks protocol for testing purposes.
 type MockProtocolClient struct {
-	Protocol protocol.Protocol
+	Protocol *protocol.Protocol
 }
 
 // NewMockProtocolClient creates mocks protocol client
 func NewMockProtocolClient() *MockProtocolClient {
 
 	return &MockProtocolClient{
-		Protocol: protocol.Protocol{
+		Protocol: &protocol.Protocol{
 			StartingBlockChainTime:       0,
 			HashAlgorithmInMultiHashCode: 18,
 			MaxOperationsPerBatch:        2,
@@ -30,6 +30,6 @@ func NewMockProtocolClient() *MockProtocolClient {
 }
 
 // Current mocks getting last protocol version
-func (m *MockProtocolClient) Current() protocol.Protocol {
-	return m.Protocol
+func (m *MockProtocolClient) Current() (*protocol.Protocol, error) {
+	return m.Protocol, nil
 }

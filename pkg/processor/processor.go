@@ -9,6 +9,8 @@ package processor
 import (
 	"errors"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/document"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
@@ -17,7 +19,8 @@ import (
 // OperationProcessor will process document operations in chronological order and create final document during resolution.
 // It uses operation store client to retrieve all operations that are related to requested document.
 type OperationProcessor struct {
-	store OperationStoreClient
+	namespace string
+	store     OperationStoreClient
 }
 
 // OperationStoreClient defines interface for retrieving all operations related to document
@@ -30,8 +33,8 @@ type OperationStoreClient interface {
 }
 
 // New returns new operation processor
-func New(store OperationStoreClient) *OperationProcessor {
-	return &OperationProcessor{store: store}
+func New(namespace string, store OperationStoreClient) *OperationProcessor {
+	return &OperationProcessor{namespace: namespace, store: store}
 }
 
 // Resolve document based on the given unique suffix
@@ -42,6 +45,8 @@ func (s *OperationProcessor) Resolve(uniqueSuffix string) (document.Document, er
 	if err != nil {
 		return nil, err
 	}
+
+	log.Infof("[%s] Found %d operations for unique suffix [%s]: %+v", s.namespace, len(ops), uniqueSuffix, ops)
 
 	rm := &resolutionModel{}
 
@@ -125,6 +130,8 @@ func (s *OperationProcessor) applyOperation(operation *batch.Operation, rm *reso
 }
 
 func (s *OperationProcessor) applyCreateOperation(operation *batch.Operation, rm *resolutionModel) (*resolutionModel, error) {
+	log.Infof("[%s] Applying create operation: %+v", s.namespace, operation)
+
 	if rm.Doc != nil {
 		return nil, errors.New("create has to be the first operation")
 	}
@@ -147,6 +154,8 @@ func (s *OperationProcessor) applyCreateOperation(operation *batch.Operation, rm
 }
 
 func (s *OperationProcessor) applyUpdateOperation(operation *batch.Operation, rm *resolutionModel) (*resolutionModel, error) {
+	log.Infof("[%s] Applying update operation: %+v", s.namespace, operation)
+
 	if rm.Doc == nil {
 		return nil, errors.New("update cannot be first operation")
 	}
@@ -181,6 +190,8 @@ func (s *OperationProcessor) applyUpdateOperation(operation *batch.Operation, rm
 }
 
 func (s *OperationProcessor) applyDeleteOperation(operation *batch.Operation, rm *resolutionModel) (*resolutionModel, error) {
+	log.Infof("[%s] Applying delete operation: %+v", s.namespace, operation)
+
 	if rm.Doc == nil {
 		return nil, errors.New("delete can only be applied to an existing document")
 	}

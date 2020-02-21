@@ -48,7 +48,7 @@ type OperationProcessor interface {
 
 // BatchWriter is an interface to add an operation to the batch
 type BatchWriter interface {
-	Add(operation []byte, uniqueSuffix string) error
+	Add(operation *batch.OperationInfo) error
 }
 
 // DocumentValidator is an interface for validating document operations
@@ -186,7 +186,7 @@ func (r *DocumentHandler) addToBatch(operation *batch.Operation) error {
 	if err != nil {
 		return err
 	}
-	return r.writer.Add(opBytes, operation.UniqueSuffix)
+	return r.writer.Add(batch.NewOperationInfo(operation.UniqueSuffix, opBytes))
 }
 
 func (r *DocumentHandler) getDoc(id, encodedPayload string) (document.Document, error) {

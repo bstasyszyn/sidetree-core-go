@@ -80,14 +80,14 @@ func NewTxnProcessor(dcas DCAS, opStore OperationStore) *TxnProcessor {
 
 // Process persists all of the operations for the given anchor
 func (p *TxnProcessor) Process(sidetreeTxn SidetreeTxn) error {
-	logger.Debugf("processing sidetree txn:%+v", sidetreeTxn)
+	logger.Infof("processing sidetree txn:%+v", sidetreeTxn)
 
 	content, err := p.dcas.Read(sidetreeTxn.AnchorAddress)
 	if err != nil {
 		return errors.Wrapf(err, "failed to retrieve content for anchor: key[%s]", sidetreeTxn.AnchorAddress)
 	}
 
-	logger.Debugf("cas content for anchor[%s]: %s", sidetreeTxn.AnchorAddress, string(content))
+	logger.Infof("cas content for anchor[%s]: %s", sidetreeTxn.AnchorAddress, string(content))
 
 	af, err := getAnchorFile(content)
 	if err != nil {

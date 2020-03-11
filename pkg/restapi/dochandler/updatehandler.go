@@ -45,12 +45,14 @@ func NewUpdateHandler(processor Processor) *UpdateHandler {
 func (h *UpdateHandler) Update(rw http.ResponseWriter, req *http.Request) {
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
+		logger.Errorf("Error reading request body: %s", err)
 		common.WriteError(rw, http.StatusBadRequest, err)
 		return
 	}
 
 	request, err := getRequest(string(body))
 	if err != nil {
+		logger.Errorf("Error getting request from body: %s", err)
 		common.WriteError(rw, http.StatusBadRequest, err)
 		return
 	}
@@ -100,6 +102,8 @@ func getRequest(body string) (*model.Request, error) {
 }
 
 func (h *UpdateHandler) doUpdate(request *model.Request) (document.Document, error) {
+	logger.Errorf("Getting operation from request: %+v", request.Payload)
+
 	operation, err := h.getOperation(request)
 	if err != nil {
 		logger.Errorf("Error: %s", err)

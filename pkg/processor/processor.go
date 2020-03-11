@@ -8,6 +8,7 @@ package processor
 
 import (
 	"errors"
+	"sort"
 
 	log "github.com/sirupsen/logrus"
 
@@ -45,7 +46,9 @@ func (s *OperationProcessor) Resolve(uniqueSuffix string) (document.Document, er
 		return nil, err
 	}
 
-	log.Debugf("[%s] Found %d operations for unique suffix [%s]: %+v", s.name, len(ops), uniqueSuffix, ops)
+	sortOperations(ops)
+
+	log.Infof("[%s] Found %d operations for unique suffix [%s]: %+v", s.name, len(ops), uniqueSuffix, ops)
 
 	rm := &resolutionModel{}
 
@@ -66,12 +69,22 @@ func (s *OperationProcessor) Resolve(uniqueSuffix string) (document.Document, er
 	}
 
 	// next apply update ops since last 'full' transaction
-	rm, err = s.applyOperations(getOpsWithTxnGreaterThan(updateOps, rm.LastOperationTransactionNumber), rm)
+	rm, err = s.applyOperations(getOpsWithTxnGreaterThan(updateOps, rm.LastOperationTransactionTime, rm.LastOperationTransactionNumber), rm)
 	if err != nil {
 		return nil, err
 	}
 
 	return rm.Doc, nil
+}
+
+func sortOperations(ops []*batch.Operation) {
+	sort.Slice(ops, func(i, j int) bool {
+		if ops[i].TransactionTime < ops[j].TransactionTime {
+			return true
+		}
+
+		return ops[i].TransactionNumber < ops[j].TransactionNumber
+	})
 }
 
 func splitOperations(ops []*batch.Operation) (fullOps, updateOps []*batch.Operation) {
@@ -86,8 +99,16 @@ func splitOperations(ops []*batch.Operation) (fullOps, updateOps []*batch.Operat
 	return fullOps, updateOps
 }
 
-func getOpsWithTxnGreaterThan(ops []*batch.Operation, txnNumber uint64) []*batch.Operation {
+func getOpsWithTxnGreaterThan(ops []*batch.Operation, txnTime, txnNumber uint64) []*batch.Operation {
 	for index, op := range ops {
+		if op.TransactionTime < txnTime {
+			continue
+		}
+
+		if op.TransactionTime > txnTime {
+			return ops[index:]
+		}
+
 		if op.TransactionNumber > txnNumber {
 			return ops[index:]
 		}
@@ -103,6 +124,8 @@ func (s *OperationProcessor) applyOperations(ops []*batch.Operation, rm *resolut
 		if rm, err = s.applyOperation(op, rm); err != nil {
 			return nil, err
 		}
+
+		log.Infof("After applying op %+v, New doc: %s", op, rm.Doc)
 	}
 
 	return rm, nil
@@ -110,6 +133,7 @@ func (s *OperationProcessor) applyOperations(ops []*batch.Operation, rm *resolut
 
 type resolutionModel struct {
 	Doc                            document.Document
+	LastOperationTransactionTime   uint64
 	LastOperationTransactionNumber uint64
 	NextUpdateOTPHash              string
 	NextRecoveryOTPHash            string
@@ -129,7 +153,7 @@ func (s *OperationProcessor) applyOperation(operation *batch.Operation, rm *reso
 }
 
 func (s *OperationProcessor) applyCreateOperation(operation *batch.Operation, rm *resolutionModel) (*resolutionModel, error) {
-	log.Debugf("[%s] Applying create operation: %+v", s.name, operation)
+	log.Infof("[%s] Applying create operation: %+v", s.name, operation)
 
 	if rm.Doc != nil {
 		return nil, errors.New("create has to be the first operation")
@@ -142,13 +166,14 @@ func (s *OperationProcessor) applyCreateOperation(operation *batch.Operation, rm
 
 	return &resolutionModel{
 		Doc:                            doc,
+		LastOperationTransactionTime:   operation.TransactionTime,
 		LastOperationTransactionNumber: operation.TransactionNumber,
 		NextUpdateOTPHash:              operation.NextUpdateOTPHash,
 		NextRecoveryOTPHash:            operation.NextRecoveryOTPHash}, nil
 }
 
 func (s *OperationProcessor) applyUpdateOperation(operation *batch.Operation, rm *resolutionModel) (*resolutionModel, error) {
-	log.Debugf("[%s] Applying update operation: %+v", s.name, operation)
+	log.Infof("[%s] Applying update operation: %+v", s.name, operation)
 
 	if rm.Doc == nil {
 		return nil, errors.New("update cannot be first operation")
@@ -171,6 +196,8 @@ func (s *OperationProcessor) applyUpdateOperation(operation *batch.Operation, rm
 		return nil, err
 	}
 
+	log.Infof("[%s] After applying update operation: %+v, New doc: %s", s.name, operation, updatedDocBytes)
+
 	doc, err := document.FromBytes(updatedDocBytes)
 	if err != nil {
 		return nil, err
@@ -184,7 +211,7 @@ func (s *OperationProcessor) applyUpdateOperation(operation *batch.Operation, rm
 }
 
 func (s *OperationProcessor) applyDeleteOperation(operation *batch.Operation, rm *resolutionModel) (*resolutionModel, error) {
-	log.Debugf("[%s] Applying delete operation: %+v", s.name, operation)
+	log.Infof("[%s] Applying delete operation: %+v", s.name, operation)
 
 	if rm.Doc == nil {
 		return nil, errors.New("delete can only be applied to an existing document")
@@ -197,6 +224,7 @@ func (s *OperationProcessor) applyDeleteOperation(operation *batch.Operation, rm
 
 	return &resolutionModel{
 		Doc:                            nil,
+		LastOperationTransactionTime:   operation.TransactionTime,
 		LastOperationTransactionNumber: operation.TransactionNumber,
 		NextUpdateOTPHash:              "",
 		NextRecoveryOTPHash:            ""}, nil

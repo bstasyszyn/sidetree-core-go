@@ -43,14 +43,19 @@ func (h *UpdateHandler) handlePayload(operation *batch.Operation) (*batch.Operat
 		operation.NextRecoveryOTPHash = schema.SuffixData.NextRecoveryOTPHash
 
 	case batch.OperationTypeUpdate:
+		logger.Errorf("Got update operation: %+v", operation)
 		schema, err := getUpdatePayloadSchema(decodedPayload)
 		if err != nil {
-			return nil, errors.New("request payload doesn't follow the expected update payload schema")
+			logger.Errorf("Got error on update operation: %s", err)
+			return nil, errors.WithMessagef(err, "request payload doesn't follow the expected update payload schema")
 		}
+
+		logger.Errorf("Got update payload schema: %+v", schema)
 
 		operation.UniqueSuffix = schema.DidUniqueSuffix
 		operation.Patch = schema.Patch
 		operation.NextUpdateOTPHash = schema.NextUpdateOTPHash
+		operation.UpdateOTP = schema.UpdateOTP
 
 	case batch.OperationTypeDelete:
 		schema, err := getDeletePayloadSchema(decodedPayload)

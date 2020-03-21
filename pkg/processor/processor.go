@@ -116,7 +116,7 @@ func (s *OperationProcessor) applyOperations(ops []*batch.Operation, rm *resolut
 			return nil, err
 		}
 
-		log.Debugf("After applying op %+v, New doc: %s", op, rm.Doc)
+		log.Infof("[%s] After applying op %+v, New doc: %s", s.name, op, rm.Doc)
 	}
 
 	return rm, nil
@@ -253,4 +253,14 @@ func sortOperations(ops []*batch.Operation) {
 
 		return ops[i].TransactionNumber < ops[j].TransactionNumber
 	})
+}
+
+func contains(ops []*batch.Operation, op *batch.Operation) bool {
+	for _, o := range ops {
+		if o == op {
+			return true
+		}
+	}
+
+	return false
 }

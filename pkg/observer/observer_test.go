@@ -35,11 +35,15 @@ func TestStartObserver(t *testing.T) {
 
 		providers := &Providers{
 			Ledger:           mockLedger{registerForSidetreeTxnValue: sidetreeTxnCh},
-			DCASClient:       mockDACS{readFunc: readFunc},
+			DCASClient:       mockDCAS{readFunc: readFunc},
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
-		Start(providers)
+		o := New(providers)
+		require.NotNil(t, o)
+
+		o.Start()
+
 		sidetreeTxnCh <- []SidetreeTxn{{TransactionTime: 20, TransactionNumber: 2, AnchorAddress: "address"}}
 		time.Sleep(200 * time.Millisecond)
 		rw.RLock()
@@ -55,7 +59,11 @@ func TestStartObserver(t *testing.T) {
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
-		Start(providers)
+		o := New(providers)
+		require.NotNil(t, o)
+
+		o.Start()
+
 		close(sidetreeTxnCh)
 		time.Sleep(200 * time.Millisecond)
 	})
@@ -67,7 +75,7 @@ func TestStartObserver(t *testing.T) {
 		var rw sync.RWMutex
 		providers := &Providers{
 			Ledger: mockLedger{registerForSidetreeTxnValue: sidetreeTxnCh},
-			DCASClient: mockDACS{readFunc: func(key string) ([]byte, error) {
+			DCASClient: mockDCAS{readFunc: func(key string) ([]byte, error) {
 				if key == anchorAddressKey {
 					return docutil.MarshalCanonical(&AnchorFile{})
 				}
@@ -75,16 +83,21 @@ func TestStartObserver(t *testing.T) {
 				require.NoError(t, err)
 				return docutil.MarshalCanonical(&BatchFile{Operations: []string{docutil.EncodeToString(b)}})
 			}},
-			OpStore: mockOperationStore{putFunc: func(ops []*batch.Operation) error {
-				rw.Lock()
-				isCalled = true
-				rw.Unlock()
-				return nil
-			}},
+			OpStoreProvider: &mockOperationStoreProvider{
+				opStore: &mockOperationStore{putFunc: func(ops []*batch.Operation) error {
+					rw.Lock()
+					isCalled = true
+					rw.Unlock()
+					return nil
+				}}},
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
-		Start(providers)
+		o := New(providers)
+		require.NotNil(t, o)
+
+		o.Start()
+
 		sidetreeTxnCh <- []SidetreeTxn{{TransactionTime: 20, TransactionNumber: 2, AnchorAddress: "address"}}
 		time.Sleep(200 * time.Millisecond)
 		rw.RLock()
@@ -92,10 +105,11 @@ func TestStartObserver(t *testing.T) {
 		rw.RUnlock()
 	})
 }
+
 func TestTxnProcessor_Process(t *testing.T) {
 	t.Run("test error from dacs read", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient:       mockDACS{readFunc: func(key string) ([]byte, error) { return nil, fmt.Errorf("read error") }},
+			DCASClient:       mockDCAS{readFunc: func(key string) ([]byte, error) { return nil, fmt.Errorf("read error") }},
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
@@ -107,7 +121,7 @@ func TestTxnProcessor_Process(t *testing.T) {
 
 	t.Run("test error from getAnchorFile", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient:       mockDACS{readFunc: func(key string) ([]byte, error) { return []byte("1"), nil }},
+			DCASClient:       mockDCAS{readFunc: func(key string) ([]byte, error) { return []byte("1"), nil }},
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
@@ -119,7 +133,7 @@ func TestTxnProcessor_Process(t *testing.T) {
 
 	t.Run("test error from processBatchFile", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient: mockDACS{readFunc: func(key string) ([]byte, error) {
+			DCASClient: mockDCAS{readFunc: func(key string) ([]byte, error) {
 				if key == anchorAddressKey {
 					return docutil.MarshalCanonical(&AnchorFile{})
 				}
@@ -138,7 +152,7 @@ func TestTxnProcessor_Process(t *testing.T) {
 func TestProcessBatchFile(t *testing.T) {
 	t.Run("test error from getBatchFile", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient: mockDACS{readFunc: func(key string) ([]byte, error) {
+			DCASClient: mockDCAS{readFunc: func(key string) ([]byte, error) {
 				if key == anchorAddressKey {
 					return docutil.MarshalCanonical(&AnchorFile{})
 				}
@@ -155,7 +169,7 @@ func TestProcessBatchFile(t *testing.T) {
 
 	t.Run("test error from updateOperation", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient: mockDACS{readFunc: func(key string) ([]byte, error) {
+			DCASClient: mockDCAS{readFunc: func(key string) ([]byte, error) {
 				if key == anchorAddressKey {
 					return docutil.MarshalCanonical(&AnchorFile{})
 				}
@@ -173,7 +187,7 @@ func TestProcessBatchFile(t *testing.T) {
 
 	t.Run("test error from operationStore Put", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient: mockDACS{readFunc: func(key string) ([]byte, error) {
+			DCASClient: mockDCAS{readFunc: func(key string) ([]byte, error) {
 				if key == anchorAddressKey {
 					return docutil.MarshalCanonical(&AnchorFile{})
 				}
@@ -181,9 +195,10 @@ func TestProcessBatchFile(t *testing.T) {
 				require.NoError(t, err)
 				return docutil.MarshalCanonical(&BatchFile{Operations: []string{docutil.EncodeToString(b)}})
 			}},
-			OpStore: mockOperationStore{putFunc: func(ops []*batch.Operation) error {
-				return fmt.Errorf("put error")
-			}},
+			OpStoreProvider: &mockOperationStoreProvider{
+				opStore: &mockOperationStore{putFunc: func(ops []*batch.Operation) error {
+					return fmt.Errorf("put error")
+				}}},
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
@@ -195,7 +210,7 @@ func TestProcessBatchFile(t *testing.T) {
 
 	t.Run("test success", func(t *testing.T) {
 		providers := &Providers{
-			DCASClient: mockDACS{readFunc: func(key string) ([]byte, error) {
+			DCASClient: mockDCAS{readFunc: func(key string) ([]byte, error) {
 				if key == anchorAddressKey {
 					return docutil.MarshalCanonical(&AnchorFile{})
 				}
@@ -203,7 +218,7 @@ func TestProcessBatchFile(t *testing.T) {
 				require.NoError(t, err)
 				return docutil.MarshalCanonical(&BatchFile{Operations: []string{docutil.EncodeToString(b)}})
 			}},
-			OpStore:          mockOperationStore{},
+			OpStoreProvider:  &mockOperationStoreProvider{opStore: &mockOperationStore{}},
 			OpFilterProvider: &NoopOperationFilterProvider{},
 		}
 
@@ -257,11 +272,11 @@ func (m mockLedger) RegisterForSidetreeTxn() <-chan []SidetreeTxn {
 	return m.registerForSidetreeTxnValue
 }
 
-type mockDACS struct {
+type mockDCAS struct {
 	readFunc func(key string) ([]byte, error)
 }
 
-func (m mockDACS) Read(key string) ([]byte, error) {
+func (m mockDCAS) Read(key string) ([]byte, error) {
 	if m.readFunc != nil {
 		return m.readFunc(key)
 	}
@@ -270,11 +285,27 @@ func (m mockDACS) Read(key string) ([]byte, error) {
 
 type mockOperationStore struct {
 	putFunc func(ops []*batch.Operation) error
+	getFunc func(suffix string) ([]*batch.Operation, error)
 }
 
-func (m mockOperationStore) Put(ops []*batch.Operation) error {
+func (m *mockOperationStore) Put(ops []*batch.Operation) error {
 	if m.putFunc != nil {
 		return m.putFunc(ops)
 	}
 	return nil
+}
+
+func (m *mockOperationStore) Get(suffix string) ([]*batch.Operation, error) {
+	if m.getFunc != nil {
+		return m.getFunc(suffix)
+	}
+	return nil, nil
+}
+
+type mockOperationStoreProvider struct {
+	opStore *mockOperationStore
+}
+
+func (m mockOperationStoreProvider) ForNamespace(namespace string) (OperationStore, error) {
+	return m.opStore, nil
 }

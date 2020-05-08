@@ -8,6 +8,7 @@ package observer
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -74,6 +75,7 @@ type Observer struct {
 
 // New returns a new observer
 func New(providers *Providers) *Observer {
+	log.Printf("")
 	return &Observer{
 		Providers: providers,
 		stopCh:    make(chan struct{}, 1),

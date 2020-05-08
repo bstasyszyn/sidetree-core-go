@@ -300,13 +300,16 @@ func (r *Writer) process(ops []*batch.OperationInfo) error {
 		return err
 	}
 
-	log.Debugf("[%s] batch: %s", r.name, string(batchBytes))
+	log.Infof("[%s] Writing batch file to DCAS: %s", r.name, string(batchBytes))
 
 	// Make the batch file available in CAS
 	batchAddr, err := r.context.CAS().Write(batchBytes)
 	if err != nil {
-		return err
+		log.Errorf("[%s] Error writing batch file %s to DCAS: %s", r.name, batchBytes, err)
+		return errors.WithMessagef(err, "failed to write batch file to DCAS: %s", batchBytes)
 	}
+
+	log.Infof("[%s] Wrote batch file - key: %s", r.name, batchAddr)
 
 	uniqueSuffixes := make([]string, len(ops))
 	for i, d := range ops {
@@ -315,7 +318,8 @@ func (r *Writer) process(ops []*batch.OperationInfo) error {
 
 	anchorBytes, err := r.opsHandler.CreateAnchorFile(uniqueSuffixes, batchAddr)
 	if err != nil {
-		return err
+		log.Errorf("[%s] Failed to create anchor file with batch address [%s]: %s", r.name, batchAddr, err)
+		return errors.WithMessagef(err, "failed to create anchor file with batch address: %s", batchAddr)
 	}
 
 	log.Debugf("[%s] anchor: %s", r.name, string(anchorBytes))
@@ -323,13 +327,19 @@ func (r *Writer) process(ops []*batch.OperationInfo) error {
 	// Make the anchor file available in CAS
 	anchorAddr, err := r.context.CAS().Write(anchorBytes)
 	if err != nil {
-		return err
+		log.Errorf("[%s] Failed to write anchor file %s to DCAS: %s", r.name, anchorBytes, err)
+		return errors.WithMessagef(err, "failed to write anchor file to DCAS: %s", anchorBytes)
 	}
 
 	log.Infof("[%s] writing anchor address: %s", r.name, anchorAddr)
 
 	// Create Sidetree transaction in blockchain
-	return r.context.Blockchain().WriteAnchor(anchorAddr)
+	if err := r.context.Blockchain().WriteAnchor(anchorAddr); err != nil {
+		log.Errorf("[%s] Failed to write anchor address [%s] to the blockchain: %s", r.name, anchorAddr, err)
+		return errors.WithMessagef(err, "failed to write anchor address [%s] to the blockchain", anchorAddr)
+	}
+
+	return nil
 }
 
 func (r *Writer) handleTimer(timer <-chan time.Time, pending bool) <-chan time.Time {

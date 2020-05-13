@@ -111,13 +111,17 @@ func (o *Observer) listen(txnsCh <-chan []SidetreeTxn) {
 
 func (o *Observer) process(txns []SidetreeTxn) {
 	for _, txn := range txns {
-		err := o.processor.Process(txn)
-		if err != nil {
+		if err := o.ProcessTxn(txn); err != nil {
 			logger.Warnf("Failed to process anchor[%s]: %s", txn.AnchorAddress, err.Error())
 			continue
 		}
 		logger.Debugf("Successfully processed anchor[%s]", txn.AnchorAddress)
 	}
+}
+
+// ProcessTxn processes a single Sidetree transaction
+func (o *Observer) ProcessTxn(txn SidetreeTxn) error {
+	return o.processor.Process(txn)
 }
 
 // TxnProcessor processes Sidetree transactions by persisting them to an operation store

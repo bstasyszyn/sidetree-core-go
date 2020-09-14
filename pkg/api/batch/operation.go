@@ -46,12 +46,20 @@ type Operation struct {
 
 // AnchoredOperation defines an anchored operation (stored in document operation store)
 type AnchoredOperation struct {
-
 	//Type defines operation type
 	Type OperationType `json:"type"`
 
 	//UniqueSuffix defines document unique suffix
 	UniqueSuffix string `json:"unique_suffix"`
+
+	//The logical blockchain time (block number) that this operation was anchored on the blockchain
+	TransactionTime uint64 `json:"transaction_time"`
+
+	//The transaction number of the transaction this operation was batched within
+	TransactionNumber uint64 `json:"transaction_number"`
+
+	//The index this operation was assigned to in the batch
+	OperationIndex uint `json:"operation_index"`
 
 	//SignedData is signed data for the operation (compact JWS)
 	SignedData string `json:"signed_data,omitempty"`
@@ -61,13 +69,6 @@ type AnchoredOperation struct {
 
 	//SuffixData is encoded suffix data
 	SuffixData string `json:"suffix_data,omitempty"`
-
-	//The logical blockchain time (block number) that this operation was anchored on the blockchain
-	TransactionTime uint64 `json:"transaction_time"`
-	//The transaction number of the transaction this operation was batched within
-	TransactionNumber uint64 `json:"transaction_number"`
-	//The index this operation was assigned to in the batch
-	OperationIndex uint `json:"operation_index"`
 }
 
 // OperationType defines valid values for operation type

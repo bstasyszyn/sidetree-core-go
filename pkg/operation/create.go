@@ -13,25 +13,24 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
-	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
 	"github.com/trustbloc/sidetree-core-go/pkg/patch"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 )
 
 // ParseCreateOperation will parse create operation
-func ParseCreateOperation(request []byte, protocol protocol.Protocol) (*batch.Operation, error) {
-	schema, err := parseCreateRequest(request)
+func (p *OperationParser) ParseCreateOperation(request []byte) (*batch.Operation, error) {
+	schema, err := p.ParseCreateRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	suffixData, err := ParseSuffixData(schema.SuffixData, protocol)
+	suffixData, err := p.ParseSuffixData(schema.SuffixData)
 	if err != nil {
 		return nil, err
 	}
 
-	delta, err := ParseDelta(schema.Delta, protocol)
+	delta, err := p.ParseDelta(schema.Delta)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +41,7 @@ func ParseCreateOperation(request []byte, protocol protocol.Protocol) (*batch.Op
 		return nil, fmt.Errorf("parse create operation: delta doesn't match suffix data delta hash: %s", err.Error())
 	}
 
-	uniqueSuffix, err := docutil.CalculateUniqueSuffix(schema.SuffixData, protocol.HashAlgorithmInMultiHashCode)
+	uniqueSuffix, err := docutil.CalculateUniqueSuffix(schema.SuffixData, p.HashAlgorithmInMultiHashCode)
 	if err != nil {
 		return nil, err
 	}
@@ -58,14 +57,14 @@ func ParseCreateOperation(request []byte, protocol protocol.Protocol) (*batch.Op
 	}, nil
 }
 
-func parseCreateRequest(payload []byte) (*model.CreateRequest, error) {
+func (p *OperationParser) ParseCreateRequest(payload []byte) (*model.CreateRequest, error) {
 	schema := &model.CreateRequest{}
 	err := json.Unmarshal(payload, schema)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := validateCreateRequest(schema); err != nil {
+	if err := p.validateCreateRequest(schema); err != nil {
 		return nil, err
 	}
 
@@ -73,7 +72,7 @@ func parseCreateRequest(payload []byte) (*model.CreateRequest, error) {
 }
 
 // ParseDelta parses encoded delta string into delta model
-func ParseDelta(encoded string, p protocol.Protocol) (*model.DeltaModel, error) {
+func (p *OperationParser) ParseDelta(encoded string) (*model.DeltaModel, error) {
 	bytes, err := docutil.DecodeString(encoded)
 	if err != nil {
 		return nil, err
@@ -85,7 +84,7 @@ func ParseDelta(encoded string, p protocol.Protocol) (*model.DeltaModel, error) 
 		return nil, err
 	}
 
-	if err := validateDelta(schema, p); err != nil {
+	if err := p.validateDelta(schema); err != nil {
 		return nil, err
 	}
 
@@ -93,7 +92,7 @@ func ParseDelta(encoded string, p protocol.Protocol) (*model.DeltaModel, error) 
 }
 
 // ParseSuffixData parses encoded suffix data into suffix data model
-func ParseSuffixData(encoded string, p protocol.Protocol) (*model.SuffixDataModel, error) {
+func (p *OperationParser) ParseSuffixData(encoded string) (*model.SuffixDataModel, error) {
 	bytes, err := docutil.DecodeString(encoded)
 	if err != nil {
 		return nil, err
@@ -105,36 +104,36 @@ func ParseSuffixData(encoded string, p protocol.Protocol) (*model.SuffixDataMode
 		return nil, err
 	}
 
-	if err := validateSuffixData(schema, p); err != nil {
+	if err := p.validateSuffixData(schema); err != nil {
 		return nil, err
 	}
 
 	return schema, nil
 }
 
-func validateDelta(delta *model.DeltaModel, protocol protocol.Protocol) error {
+func (p *OperationParser) validateDelta(delta *model.DeltaModel) error {
 	if len(delta.Patches) == 0 {
 		return errors.New("missing patches")
 	}
 
-	for _, p := range delta.Patches {
-		if p.GetAction() == patch.Replace && !protocol.EnableReplacePatch {
-			return fmt.Errorf("%s patch action is not enabled", p.GetAction())
+	for _, ptch := range delta.Patches {
+		if ptch.GetAction() == patch.Replace && !p.EnableReplacePatch {
+			return fmt.Errorf("%s patch action is not enabled", ptch.GetAction())
 		}
 
-		if err := p.Validate(); err != nil {
+		if err := ptch.Validate(); err != nil {
 			return err
 		}
 	}
 
-	if !docutil.IsComputedUsingHashAlgorithm(delta.UpdateCommitment, uint64(protocol.HashAlgorithmInMultiHashCode)) {
-		return fmt.Errorf("next update commitment hash is not computed with the required supported hash algorithm: %d", protocol.HashAlgorithmInMultiHashCode)
+	if !docutil.IsComputedUsingHashAlgorithm(delta.UpdateCommitment, uint64(p.HashAlgorithmInMultiHashCode)) {
+		return fmt.Errorf("next update commitment hash is not computed with the required supported hash algorithm: %d", p.HashAlgorithmInMultiHashCode)
 	}
 
 	return nil
 }
 
-func validateSuffixData(suffixData *model.SuffixDataModel, p protocol.Protocol) error {
+func (p *OperationParser) validateSuffixData(suffixData *model.SuffixDataModel) error {
 	if !docutil.IsComputedUsingHashAlgorithm(suffixData.RecoveryCommitment, uint64(p.HashAlgorithmInMultiHashCode)) {
 		return fmt.Errorf("next recovery commitment hash is not computed with the required supported hash algorithm: %d", p.HashAlgorithmInMultiHashCode)
 	}
@@ -146,7 +145,7 @@ func validateSuffixData(suffixData *model.SuffixDataModel, p protocol.Protocol) 
 	return nil
 }
 
-func validateCreateRequest(create *model.CreateRequest) error {
+func (p *OperationParser) validateCreateRequest(create *model.CreateRequest) error {
 	if create.Delta == "" {
 		return errors.New("missing delta")
 	}

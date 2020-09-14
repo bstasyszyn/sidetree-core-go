@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
-	"github.com/trustbloc/sidetree-core-go/pkg/document"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
 )
 
@@ -100,25 +99,6 @@ func TestIsValidPayload_StoreErrors(t *testing.T) {
 	require.Equal(t, err, storeErr)
 }
 
-func TestTransformDocument(t *testing.T) {
-	doc, err := document.FromBytes(validDoc)
-	require.NoError(t, err)
-
-	v := getDefaultValidator()
-
-	// there is no transformation for generic doc for now
-	result, err := v.TransformDocument(doc)
-	require.NoError(t, err)
-	require.Equal(t, doc, result.Document)
-
-	// test document with operation keys
-	doc, err = document.FromBytes([]byte(validDocWithOpsKeys))
-	require.NoError(t, err)
-	result, err = v.TransformDocument(doc)
-	require.NoError(t, err)
-	require.Equal(t, 0, len(result.Document.PublicKeys()))
-}
-
 func getDefaultValidator() *Validator {
 	return New(mocks.NewMockOperationStore(nil))
 }
@@ -128,28 +108,5 @@ var invalidDoc = []byte(`{ "id" : "001", "name": "John Smith" }`)
 
 var validUpdate = []byte(`{ "did_suffix": "abc" }`)
 var invalidUpdate = []byte(`{ "patch": "" }`)
-
-const validDocWithOpsKeys = `
-{
-  "id" : "doc:method:abc",
-  "publicKey": [
-    {
-      "id": "update-key",
-      "type": "JsonWebKey2020",
-      "purpose": ["general"],
-      "jwk": {
-        "kty": "EC",
-        "crv": "P-256K",
-        "x": "PUymIqdtF_qxaAqPABSw-C-owT1KYYQbsMKFM-L9fJA",
-        "y": "nM84jDHCMOTGTh_ZdHq4dBBdo4Z5PkEOW9jA8z8IsGc"
-      }
-    }
-  ],
-  "other": [
-    {
-      "name": "name"
-    }
-  ]
-}`
 
 var pubKeyNoID = []byte(`{ "publicKey": [{"id": "", "type": "JsonWebKey2020"}]}`)

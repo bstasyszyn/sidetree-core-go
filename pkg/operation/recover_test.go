@@ -35,16 +35,18 @@ func TestParseRecoverOperation(t *testing.T) {
 		KeyAlgorithms:                []string{"crv"},
 	}
 
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		request, err := getRecoverRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.NoError(t, err)
 		require.Equal(t, batch.OperationTypeRecover, op.Type)
 	})
 	t.Run("parse recover request error", func(t *testing.T) {
-		schema, err := ParseRecoverOperation([]byte(""), p)
+		schema, err := parser.ParseRecoverOperation([]byte(""))
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "unexpected end of JSON input")
@@ -57,7 +59,7 @@ func TestParseRecoverOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.Error(t, err)
 		require.Nil(t, op)
 		require.Contains(t, err.Error(), "missing did suffix")
@@ -70,7 +72,7 @@ func TestParseRecoverOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid character")
 		require.Nil(t, op)
@@ -86,7 +88,7 @@ func TestParseRecoverOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing patches")
 		require.Nil(t, op)
@@ -99,7 +101,7 @@ func TestParseRecoverOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid JWS compact format")
 		require.Nil(t, op)
@@ -115,7 +117,7 @@ func TestParseRecoverOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal signed data model for recover")
 		require.Nil(t, op)
@@ -133,7 +135,7 @@ func TestParseRecoverOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseRecoverOperation(request, p)
+		op, err := parser.ParseRecoverOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "signed data for recovery: missing signing key")
 		require.Nil(t, op)
@@ -146,10 +148,12 @@ func TestValidateSignedDataForRecovery(t *testing.T) {
 		KeyAlgorithms:                []string{"crv"},
 	}
 
+	parser := NewParser(p)
+
 	t.Run("missing recovery key", func(t *testing.T) {
 		signed := getSignedDataForRecovery()
 		signed.RecoveryKey = nil
-		err := validateSignedDataForRecovery(signed, p)
+		err := parser.validateSignedDataForRecovery(signed)
 		require.Error(t, err)
 		require.Contains(t, err.Error(),
 			"signed data for recovery: missing signing key")
@@ -157,14 +161,14 @@ func TestValidateSignedDataForRecovery(t *testing.T) {
 	t.Run("invalid patch data hash", func(t *testing.T) {
 		signed := getSignedDataForRecovery()
 		signed.DeltaHash = ""
-		err := validateSignedDataForRecovery(signed, p)
+		err := parser.validateSignedDataForRecovery(signed)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "patch data hash is not computed with the required hash algorithm")
 	})
 	t.Run("invalid next recovery commitment hash", func(t *testing.T) {
 		signed := getSignedDataForRecovery()
 		signed.RecoveryCommitment = ""
-		err := validateSignedDataForRecovery(signed, p)
+		err := parser.validateSignedDataForRecovery(signed)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "next recovery commitment hash is not computed with the required hash algorithm")
 	})
@@ -178,6 +182,8 @@ func TestParseSignedData(t *testing.T) {
 		SignatureAlgorithms:          []string{"alg"},
 	}
 
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		jwsSignature, err := internal.NewJWS(nil, nil, []byte("payload"), mockSigner)
 		require.NoError(t, err)
@@ -185,18 +191,18 @@ func TestParseSignedData(t *testing.T) {
 		compactJWS, err := jwsSignature.SerializeCompact(false)
 		require.NoError(t, err)
 
-		jws, err := parseSignedData(compactJWS, p)
+		jws, err := parser.parseSignedData(compactJWS)
 		require.NoError(t, err)
 		require.NotNil(t, jws)
 	})
 	t.Run("missing signed data", func(t *testing.T) {
-		jws, err := parseSignedData("", p)
+		jws, err := parser.parseSignedData("")
 		require.Error(t, err)
 		require.Nil(t, jws)
 		require.Contains(t, err.Error(), "missing signed data")
 	})
 	t.Run("missing protected headers", func(t *testing.T) {
-		jws, err := parseSignedData(".cGF5bG9hZA.c2lnbmF0dXJl", p)
+		jws, err := parser.parseSignedData(".cGF5bG9hZA.c2lnbmF0dXJl")
 		require.Error(t, err)
 		require.Nil(t, jws)
 		require.Contains(t, err.Error(), "unmarshal JSON headers: unexpected end of JSON input")
@@ -208,13 +214,13 @@ func TestParseSignedData(t *testing.T) {
 		compactJWS, err := jwsSignature.SerializeCompact(false)
 		require.NoError(t, err)
 
-		jws, err := parseSignedData(compactJWS, p)
+		jws, err := parser.parseSignedData(compactJWS)
 		require.Error(t, err)
 		require.Nil(t, jws)
 		require.Contains(t, err.Error(), "compact jws payload is empty")
 	})
 	t.Run("missing signature", func(t *testing.T) {
-		jws, err := parseSignedData("eyJhbGciOiJhbGciLCJraWQiOiJraWQifQ.cGF5bG9hZA.", p)
+		jws, err := parser.parseSignedData("eyJhbGciOiJhbGciLCJraWQiOiJraWQifQ.cGF5bG9hZA.")
 		require.Error(t, err)
 		require.Nil(t, jws)
 		require.Contains(t, err.Error(), "compact jws signature is empty")
@@ -226,7 +232,9 @@ func TestParseSignedData(t *testing.T) {
 		compactJWS, err := jwsSignature.SerializeCompact(false)
 		require.NoError(t, err)
 
-		jws, err := parseSignedData(compactJWS, protocol.Protocol{SignatureAlgorithms: []string{"other"}})
+		parser := NewParser(protocol.Protocol{SignatureAlgorithms: []string{"other"}})
+
+		jws, err := parser.parseSignedData(compactJWS)
 		require.Error(t, err)
 		require.Nil(t, jws)
 		require.Contains(t, err.Error(), "failed to parse signed data: algorithm 'alg' is not in the allowed list [other]")
@@ -242,13 +250,15 @@ func TestValidateSigningKey(t *testing.T) {
 
 	allowedAlgorithms := []string{"crv"}
 
+	parser := NewParser(protocol.Protocol{})
+
 	t.Run("success", func(t *testing.T) {
-		err := validateSigningKey(testJWK, allowedAlgorithms)
+		err := parser.validateSigningKey(testJWK, allowedAlgorithms)
 		require.NoError(t, err)
 	})
 
 	t.Run("error - required info is missing (kty)", func(t *testing.T) {
-		err := validateSigningKey(&jws.JWK{
+		err := parser.validateSigningKey(&jws.JWK{
 			Crv: "crv",
 			X:   "x",
 		}, allowedAlgorithms)
@@ -257,18 +267,20 @@ func TestValidateSigningKey(t *testing.T) {
 	})
 
 	t.Run("error - key algorithm not supported", func(t *testing.T) {
-		err := validateSigningKey(testJWK, []string{"other"})
+		err := parser.validateSigningKey(testJWK, []string{"other"})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "key algorithm 'crv' is not in the allowed list [other]")
 	})
 }
 
 func TestValidateRecoverRequest(t *testing.T) {
+	parser := NewParser(protocol.Protocol{})
+
 	t.Run("success", func(t *testing.T) {
 		recover, err := getDefaultRecoverRequest()
 		require.NoError(t, err)
 
-		err = validateRecoverRequest(recover)
+		err = parser.validateRecoverRequest(recover)
 		require.NoError(t, err)
 	})
 	t.Run("missing signed data", func(t *testing.T) {
@@ -276,7 +288,7 @@ func TestValidateRecoverRequest(t *testing.T) {
 		require.NoError(t, err)
 		recover.SignedData = ""
 
-		err = validateRecoverRequest(recover)
+		err = parser.validateRecoverRequest(recover)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing signed data")
 	})
@@ -285,7 +297,7 @@ func TestValidateRecoverRequest(t *testing.T) {
 		require.NoError(t, err)
 		recover.DidSuffix = ""
 
-		err = validateRecoverRequest(recover)
+		err = parser.validateRecoverRequest(recover)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing did suffix")
 	})
@@ -294,7 +306,7 @@ func TestValidateRecoverRequest(t *testing.T) {
 		require.NoError(t, err)
 		recover.Delta = ""
 
-		err = validateRecoverRequest(recover)
+		err = parser.validateRecoverRequest(recover)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing delta")
 	})
@@ -303,20 +315,22 @@ func TestValidateRecoverRequest(t *testing.T) {
 func TestValidateProtectedHeader(t *testing.T) {
 	algs := []string{"alg-1", "alg-2"}
 
+	parser := NewParser(protocol.Protocol{})
+
 	t.Run("success - kid can be empty", func(t *testing.T) {
 		protected := getHeaders("alg-1", "")
 
-		err := validateProtectedHeaders(protected, algs)
+		err := parser.validateProtectedHeaders(protected, algs)
 		require.NoError(t, err)
 	})
 	t.Run("success - kid can be provided", func(t *testing.T) {
 		protected := getHeaders("alg-1", "kid-1")
 
-		err := validateProtectedHeaders(protected, algs)
+		err := parser.validateProtectedHeaders(protected, algs)
 		require.NoError(t, err)
 	})
 	t.Run("error - missing header", func(t *testing.T) {
-		err := validateProtectedHeaders(nil, algs)
+		err := parser.validateProtectedHeaders(nil, algs)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing protected headers")
 	})
@@ -334,7 +348,7 @@ func TestValidateProtectedHeader(t *testing.T) {
 		protected := make(jws.Headers)
 		protected[kidKey] = "kid-1"
 
-		err := validateProtectedHeaders(protected, algs)
+		err := parser.validateProtectedHeaders(protected, algs)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "algorithm must be present in the protected header")
 	})
@@ -342,7 +356,7 @@ func TestValidateProtectedHeader(t *testing.T) {
 	t.Run("err - algorithm cannot be empty", func(t *testing.T) {
 		protected := getHeaders("", "kid-1")
 
-		err := validateProtectedHeaders(protected, algs)
+		err := parser.validateProtectedHeaders(protected, algs)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "algorithm cannot be empty in the protected header")
 	})
@@ -354,14 +368,14 @@ func TestValidateProtectedHeader(t *testing.T) {
 		protected["alg"] = "alg"
 		protected["other"] = "value"
 
-		err := validateProtectedHeaders(protected, algs)
+		err := parser.validateProtectedHeaders(protected, algs)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid protected header: other")
 	})
 	t.Run("error - algorithm not allowed", func(t *testing.T) {
 		protected := getHeaders("alg-other", "kid")
 
-		err := validateProtectedHeaders(protected, algs)
+		err := parser.validateProtectedHeaders(protected, algs)
 		require.Error(t, err)
 		require.Equal(t, "algorithm 'alg-other' is not in the allowed list [alg-1 alg-2]", err.Error())
 	})

@@ -24,11 +24,13 @@ func TestGetOperation(t *testing.T) {
 		KeyAlgorithms:                []string{"crv"},
 	}
 
+	parser := NewParser(p)
+
 	t.Run("create", func(t *testing.T) {
 		operation, err := getCreateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseOperation(namespace, operation, p)
+		op, err := parser.Parse(namespace, operation)
 		require.NoError(t, err)
 		require.NotNil(t, op)
 	})
@@ -36,7 +38,7 @@ func TestGetOperation(t *testing.T) {
 		operation, err := getUpdateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseOperation(namespace, operation, p)
+		op, err := parser.Parse(namespace, operation)
 		require.NoError(t, err)
 		require.NotNil(t, op)
 	})
@@ -44,7 +46,7 @@ func TestGetOperation(t *testing.T) {
 		operation, err := getDeactivateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseOperation(namespace, operation, p)
+		op, err := parser.Parse(namespace, operation)
 		require.NoError(t, err)
 		require.NotNil(t, op)
 	})
@@ -52,7 +54,7 @@ func TestGetOperation(t *testing.T) {
 		operation, err := getRecoverRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseOperation(namespace, operation, p)
+		op, err := parser.Parse(namespace, operation)
 		require.NoError(t, err)
 		require.NotNil(t, op)
 	})
@@ -61,24 +63,25 @@ func TestGetOperation(t *testing.T) {
 		invalid := protocol.Protocol{
 			HashAlgorithmInMultiHashCode: 55,
 		}
+		parser := NewParser(invalid)
 
 		operation, err := getRecoverRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseOperation(namespace, operation, invalid)
+		op, err := parser.Parse(namespace, operation)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "next update commitment hash is not computed with the required supported hash algorithm")
 		require.Nil(t, op)
 	})
 	t.Run("unsupported operation type error", func(t *testing.T) {
 		operation := getUnsupportedRequest()
-		op, err := ParseOperation(namespace, operation, p)
+		op, err := parser.Parse(namespace, operation)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not implemented")
 		require.Nil(t, op)
 	})
 	t.Run("unmarshal request error - not JSON", func(t *testing.T) {
-		op, err := ParseOperation(namespace, []byte("operation"), p)
+		op, err := parser.Parse(namespace, []byte("operation"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal operation buffer into operation schema")
 		require.Nil(t, op)

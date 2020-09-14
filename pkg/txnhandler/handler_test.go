@@ -36,8 +36,8 @@ const defaultNS = "did:sidetree"
 
 func TestNewOperationHandler(t *testing.T) {
 	handler := NewOperationHandler(
+		mocks.NewMockProtocolClient().Protocol,
 		mocks.NewMockCasClient(nil),
-		mocks.NewMockProtocolClient(),
 		compression.New(compression.WithDefaultAlgorithms()))
 	require.NotNil(t, handler)
 }
@@ -54,8 +54,8 @@ func TestOperationHandler_PrepareTxnFiles(t *testing.T) {
 		ops := getTestOperations(createOpsNum, updateOpsNum, deactivateOpsNum, recoverOpsNum)
 
 		handler := NewOperationHandler(
+			mocks.NewMockProtocolClient().Protocol,
 			mocks.NewMockCasClient(nil),
-			mocks.NewMockProtocolClient(),
 			compression)
 
 		anchorString, err := handler.PrepareTxnFiles(ops)
@@ -115,8 +115,8 @@ func TestOperationHandler_PrepareTxnFiles(t *testing.T) {
 		ops := getTestOperations(createOpsNum, updateOpsNum, deactivateOpsNum, recoverOpsNum)
 
 		handler := NewOperationHandler(
+			mocks.NewMockProtocolClient().Protocol,
 			mocks.NewMockCasClient(errors.New("CAS error")),
-			mocks.NewMockProtocolClient(),
 			compression)
 
 		anchorString, err := handler.PrepareTxnFiles(ops)
@@ -129,8 +129,8 @@ func TestOperationHandler_PrepareTxnFiles(t *testing.T) {
 		ops := getTestOperations(0, 0, deactivateOpsNum, 0)
 
 		handler := NewOperationHandler(
+			mocks.NewMockProtocolClient().Protocol,
 			mocks.NewMockCasClient(errors.New("CAS error")),
-			mocks.NewMockProtocolClient(),
 			compression)
 
 		anchorString, err := handler.PrepareTxnFiles(ops)
@@ -138,28 +138,12 @@ func TestOperationHandler_PrepareTxnFiles(t *testing.T) {
 		require.Empty(t, anchorString)
 		require.Contains(t, err.Error(), "failed to store anchor file: CAS error")
 	})
-
-	t.Run("error - protocol error", func(t *testing.T) {
-		ops := getTestOperations(createOpsNum, updateOpsNum, deactivateOpsNum, recoverOpsNum)
-
-		pc := mocks.NewMockProtocolClient()
-		pc.Err = fmt.Errorf("injected protocol error")
-
-		handler := NewOperationHandler(
-			mocks.NewMockCasClient(nil),
-			pc,
-			compression)
-
-		anchorString, err := handler.PrepareTxnFiles(ops)
-		require.EqualError(t, err, pc.Err.Error())
-		require.Empty(t, anchorString)
-	})
 }
 
 func TestWriteModelToCAS(t *testing.T) {
 	handler := NewOperationHandler(
+		mocks.NewMockProtocolClient().Protocol,
 		mocks.NewMockCasClient(nil),
-		mocks.NewMockProtocolClient(),
 		compression.New(compression.WithDefaultAlgorithms()))
 
 	t.Run("success", func(t *testing.T) {
@@ -177,8 +161,8 @@ func TestWriteModelToCAS(t *testing.T) {
 
 	t.Run("error - CAS error", func(t *testing.T) {
 		handlerWithCASError := NewOperationHandler(
+			mocks.NewMockProtocolClient().Protocol,
 			mocks.NewMockCasClient(errors.New("CAS error")),
-			mocks.NewMockProtocolClient(),
 			compression.New(compression.WithDefaultAlgorithms()))
 
 		address, err := handlerWithCASError.writeModelToCAS(&models.AnchorFile{}, "alias")
@@ -192,8 +176,8 @@ func TestWriteModelToCAS(t *testing.T) {
 		pc.Protocol.CompressionAlgorithm = "invalid"
 
 		handlerWithProtocolError := NewOperationHandler(
+			pc.Protocol,
 			mocks.NewMockCasClient(nil),
-			pc,
 			compression.New(compression.WithDefaultAlgorithms()),
 		)
 
@@ -269,7 +253,8 @@ func generateCreateOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func generateRecoverOperation(num int) (*batch.Operation, error) {
@@ -307,7 +292,8 @@ func generateRecoverOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func generateDeactivateOperation(num int) (*batch.Operation, error) {
@@ -331,7 +317,8 @@ func generateDeactivateOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func generateUpdateOperation(num int) (*batch.Operation, error) {
@@ -369,7 +356,8 @@ func generateUpdateOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func getTestPatch() (patch.Patch, error) {

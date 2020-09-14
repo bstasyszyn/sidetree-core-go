@@ -9,51 +9,18 @@ package observer
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/txn"
-	"github.com/trustbloc/sidetree-core-go/pkg/compression"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
-	"github.com/trustbloc/sidetree-core-go/pkg/txnhandler"
 )
 
 const anchorString = "1.anchorAddress"
 
 func TestStartObserver(t *testing.T) {
-	t.Run("test error from ProcessSidetreeTxn", func(t *testing.T) {
-		sidetreeTxnCh := make(chan []txn.SidetreeTxn, 100)
-		isCalled := false
-		var rw sync.RWMutex
-		readFunc := func(key string) ([]byte, error) {
-			rw.Lock()
-			isCalled = true
-			rw.Unlock()
-			return nil, fmt.Errorf("read error")
-		}
-
-		providers := &Providers{
-			Ledger:         mockLedger{registerForSidetreeTxnValue: sidetreeTxnCh},
-			TxnOpsProvider: txnhandler.NewOperationProvider(&mockDCAS{readFunc: readFunc}, mocks.NewMockProtocolClientProvider(), compression.New(compression.WithDefaultAlgorithms())),
-		}
-
-		o := New(providers)
-		require.NotNil(t, o)
-
-		o.Start()
-		defer o.Stop()
-
-		sidetreeTxnCh <- []txn.SidetreeTxn{{Namespace: mocks.DefaultNS, TransactionTime: 20, TransactionNumber: 2, AnchorString: "1.address"}}
-		time.Sleep(200 * time.Millisecond)
-		rw.RLock()
-		require.True(t, isCalled)
-		rw.RUnlock()
-	})
-
 	t.Run("test channel close", func(t *testing.T) {
 		sidetreeTxnCh := make(chan []txn.SidetreeTxn, 100)
 
@@ -73,20 +40,19 @@ func TestStartObserver(t *testing.T) {
 
 	t.Run("test success", func(t *testing.T) {
 		sidetreeTxnCh := make(chan []txn.SidetreeTxn, 100)
-		isCalled := false
 
-		var rw sync.RWMutex
-		opStore := &mockOperationStore{putFunc: func(ops []*batch.AnchoredOperation) error {
-			rw.Lock()
-			isCalled = true
-			rw.Unlock()
-			return nil
-		}}
+		tp := &mocks.TxnProcessor{}
+
+		pv := &mocks.ProtocolVersion{}
+		pv.TransactionProcessorReturns(tp)
+
+		pc := mocks.NewMockProtocolClient()
+		pc.Versions[0] = pv
+		pcp := mocks.NewMockProtocolClientProvider().WithProtocolClient("", pc)
 
 		providers := &Providers{
-			Ledger:          mockLedger{registerForSidetreeTxnValue: sidetreeTxnCh},
-			TxnOpsProvider:  &mockTxnOpsProvider{},
-			OpStoreProvider: &mockOperationStoreProvider{opStore: opStore},
+			Ledger:                 mockLedger{registerForSidetreeTxnValue: sidetreeTxnCh},
+			ProtocolClientProvider: pcp,
 		}
 
 		o := New(providers)
@@ -97,46 +63,37 @@ func TestStartObserver(t *testing.T) {
 
 		sidetreeTxnCh <- []txn.SidetreeTxn{{TransactionTime: 20, TransactionNumber: 2, AnchorString: "1.address"}}
 		time.Sleep(200 * time.Millisecond)
-		rw.RLock()
-		require.True(t, isCalled)
-		rw.RUnlock()
+
+		require.Equal(t, 1, tp.ProcessCallCount())
 	})
 }
 
 func TestTxnProcessor_Process(t *testing.T) {
 	t.Run("test error from txn operations provider", func(t *testing.T) {
-		providers := &Providers{
-			TxnOpsProvider: &mockTxnOpsProvider{err: errors.New("txn operations provider error")},
+		errExpected := fmt.Errorf("txn operations provider error")
+
+		opp := &mockTxnOpsProvider{
+			err: errExpected,
+		}
+
+		providers := &TxnProcessorProviders{
+			OpStore:                   &mockOperationStore{},
+			OperationProtocolProvider: opp,
 		}
 
 		p := NewTxnProcessor(providers)
 		err := p.Process(txn.SidetreeTxn{})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to retrieve operations for anchor string")
+		require.Contains(t, err.Error(), errExpected.Error())
 	})
 }
 
 func TestProcessTxnOperations(t *testing.T) {
-	t.Run("test error from operationStoreProvider ForNamespace", func(t *testing.T) {
-		errExpected := errors.New("injected store provider error")
-
-		providers := &Providers{
-			OpStoreProvider: &mockOperationStoreProvider{err: errExpected},
-		}
-
-		p := NewTxnProcessor(providers)
-		err := p.processTxnOperations([]*batch.AnchoredOperation{{UniqueSuffix: "abc"}}, txn.SidetreeTxn{AnchorString: anchorString})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), errExpected.Error())
-	})
-
 	t.Run("test error from operationStore Put", func(t *testing.T) {
-		opStore := &mockOperationStore{putFunc: func(ops []*batch.AnchoredOperation) error {
-			return fmt.Errorf("put error")
-		}}
-
-		providers := &Providers{
-			OpStoreProvider: &mockOperationStoreProvider{opStore: opStore},
+		providers := &TxnProcessorProviders{
+			OpStore: &mockOperationStore{putFunc: func(ops []*batch.AnchoredOperation) error {
+				return fmt.Errorf("put error")
+			}},
 		}
 
 		p := NewTxnProcessor(providers)
@@ -146,13 +103,13 @@ func TestProcessTxnOperations(t *testing.T) {
 	})
 
 	t.Run("test success", func(t *testing.T) {
-		providers := &Providers{
-			TxnOpsProvider:  &mockTxnOpsProvider{},
-			OpStoreProvider: &mockOperationStoreProvider{opStore: &mockOperationStore{}},
+		providers := &TxnProcessorProviders{
+			OperationProtocolProvider: &mockTxnOpsProvider{},
+			OpStore:                   &mockOperationStore{},
 		}
 
 		p := NewTxnProcessor(providers)
-		batchOps, err := p.TxnOpsProvider.GetTxnOperations(&txn.SidetreeTxn{AnchorString: anchorString})
+		batchOps, err := p.OperationProtocolProvider.GetTxnOperations(&txn.SidetreeTxn{AnchorString: anchorString})
 		require.NoError(t, err)
 
 		err = p.processTxnOperations(batchOps, txn.SidetreeTxn{AnchorString: anchorString})
@@ -160,14 +117,13 @@ func TestProcessTxnOperations(t *testing.T) {
 	})
 
 	t.Run("success - multiple operations with same suffix in transaction operations", func(t *testing.T) {
-		mockOpsStore := &mockOperationStore{}
-		providers := &Providers{
-			TxnOpsProvider:  &mockTxnOpsProvider{},
-			OpStoreProvider: &mockOperationStoreProvider{opStore: mockOpsStore},
+		providers := &TxnProcessorProviders{
+			OperationProtocolProvider: &mockTxnOpsProvider{},
+			OpStore:                   &mockOperationStore{},
 		}
 
 		p := NewTxnProcessor(providers)
-		batchOps, err := p.TxnOpsProvider.GetTxnOperations(&txn.SidetreeTxn{AnchorString: anchorString})
+		batchOps, err := p.OperationProtocolProvider.GetTxnOperations(&txn.SidetreeTxn{AnchorString: anchorString})
 		require.NoError(t, err)
 
 		// add same operations again to create scenario where batch has multiple operations with same suffix

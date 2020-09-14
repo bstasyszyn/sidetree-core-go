@@ -12,24 +12,23 @@ import (
 	"fmt"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
-	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 )
 
 // ParseUpdateOperation will parse update operation
-func ParseUpdateOperation(request []byte, protocol protocol.Protocol) (*batch.Operation, error) {
+func (p *OperationParser) ParseUpdateOperation(request []byte) (*batch.Operation, error) {
 	schema, err := parseUpdateRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = ParseSignedDataForUpdate(schema.SignedData, protocol)
+	_, err = p.ParseSignedDataForUpdate(schema.SignedData)
 	if err != nil {
 		return nil, err
 	}
 
-	delta, err := ParseDelta(schema.Delta, protocol)
+	delta, err := p.ParseDelta(schema.Delta)
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +58,8 @@ func parseUpdateRequest(payload []byte) (*model.UpdateRequest, error) {
 }
 
 // ParseSignedDataForUpdate will parse and validate signed data for update
-func ParseSignedDataForUpdate(compactJWS string, p protocol.Protocol) (*model.UpdateSignedDataModel, error) {
-	jws, err := parseSignedData(compactJWS, p)
+func (p *OperationParser) ParseSignedDataForUpdate(compactJWS string) (*model.UpdateSignedDataModel, error) {
+	jws, err := p.parseSignedData(compactJWS)
 	if err != nil {
 		return nil, fmt.Errorf("update: %s", err.Error())
 	}
@@ -71,7 +70,7 @@ func ParseSignedDataForUpdate(compactJWS string, p protocol.Protocol) (*model.Up
 		return nil, fmt.Errorf("failed to unmarshal signed data model for update: %s", err.Error())
 	}
 
-	if err := validateSignedDataForUpdate(schema, p); err != nil {
+	if err := p.validateSignedDataForUpdate(schema); err != nil {
 		return nil, err
 	}
 
@@ -94,7 +93,7 @@ func validateUpdateRequest(update *model.UpdateRequest) error {
 	return nil
 }
 
-func validateSignedDataForUpdate(signedData *model.UpdateSignedDataModel, p protocol.Protocol) error {
+func (p *OperationParser) validateSignedDataForUpdate(signedData *model.UpdateSignedDataModel) error {
 	if err := validateSigningKey(signedData.UpdateKey, p.KeyAlgorithms); err != nil {
 		return fmt.Errorf("signed data for update: %s", err.Error())
 	}

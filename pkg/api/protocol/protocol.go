@@ -6,6 +6,20 @@ SPDX-License-Identifier: Apache-2.0
 
 package protocol
 
+import (
+	batchapi "github.com/trustbloc/sidetree-core-go/pkg/api/batch"
+	"github.com/trustbloc/sidetree-core-go/pkg/api/txn"
+	"github.com/trustbloc/sidetree-core-go/pkg/document"
+	"github.com/trustbloc/sidetree-core-go/pkg/patch"
+	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
+)
+
+//go:generate counterfeiter -o ../../mocks/txnprocessor.gen.go --fake-name TxnProcessor . TxnProcessor
+//go:generate counterfeiter -o ../../mocks/operationparser.gen.go --fake-name OperationParser . OperationParser
+//go:generate counterfeiter -o ../../mocks/operationapplier.gen.go --fake-name OperationApplier . OperationApplier
+//go:generate counterfeiter -o ../../mocks/protocolversion.gen.go --fake-name ProtocolVersion . Version
+//go:generate counterfeiter -o ../../mocks/txnprocessor.gen.go --fake-name TxnProcessor . TxnProcessor
+
 // Protocol defines protocol parameters
 type Protocol struct {
 	// GenesisTime is inclusive starting logical blockchain time that this protocol applies to
@@ -35,13 +49,66 @@ type Protocol struct {
 	KeyAlgorithms []string
 }
 
+type TxnProcessor interface {
+	Process(sidetreeTxn txn.SidetreeTxn) error
+}
+
+type OperationParser interface {
+	Parse(namespace string, operationBuffer []byte) (*batchapi.Operation, error)
+	ParseCreate(request []byte) (*batchapi.Operation, error)
+	ParseSuffixData(encoded string) (*model.SuffixDataModel, error)
+	ParseDelta(encoded string) (*model.DeltaModel, error)
+	ParseSignedDataForUpdate(compactJWS string) (*model.UpdateSignedDataModel, error)
+	ParseSignedDataForDeactivate(compactJWS string) (*model.DeactivateSignedDataModel, error)
+	ParseSignedDataForRecover(compactJWS string) (*model.RecoverSignedDataModel, error)
+}
+
+type ResolutionModel struct {
+	Doc                            document.Document
+	LastOperationTransactionTime   uint64
+	LastOperationTransactionNumber uint64
+	UpdateCommitment               string
+	RecoveryCommitment             string
+}
+
+type OperationApplier interface {
+	ApplyCreateOperation(op *batchapi.AnchoredOperation, rm *ResolutionModel) (*ResolutionModel, error)
+	ApplyUpdateOperation(op *batchapi.AnchoredOperation, rm *ResolutionModel) (*ResolutionModel, error)
+	ApplyDeactivateOperation(op *batchapi.AnchoredOperation, rm *ResolutionModel) (*ResolutionModel, error)
+	ApplyRecoverOperation(op *batchapi.AnchoredOperation, rm *ResolutionModel) (*ResolutionModel, error)
+}
+
+type DocumentComposer interface {
+	ApplyPatches(doc document.Document, patches []patch.Patch) (document.Document, error)
+}
+
+// TxnHandler defines an interface for creating chunks, map and anchor files
+type TxnHandler interface {
+	// GetTxnOperations operations will create relevant files, store them in CAS and return anchor string
+	PrepareTxnFiles(ops []*batchapi.Operation) (string, error)
+}
+
+type OperationProtocolProvider interface {
+	GetTxnOperations(sidetreeTxn *txn.SidetreeTxn) ([]*batchapi.AnchoredOperation, error)
+}
+
+type Version interface {
+	Protocol() Protocol
+	TransactionProcessor() TxnProcessor
+	OperationParser() OperationParser
+	OperationApplier() OperationApplier
+	DocumentComposer() DocumentComposer
+	TransactionHandler() TxnHandler
+	OperationProtocolProvider() OperationProtocolProvider
+}
+
 // Client defines interface for accessing protocol version/information
 type Client interface {
-
 	// Current returns latest version of protocol
-	Current() (Protocol, error)
+	Current() (Version, error)
 
-	Get(transactionTime uint64) (Protocol, error)
+	// Get returns the version at the given transaction time
+	Get(transactionTime uint64) (Version, error)
 }
 
 // ClientProvider returns a protocol client for the given namespace

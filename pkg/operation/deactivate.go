@@ -12,18 +12,17 @@ import (
 	"fmt"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
-	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 )
 
 // ParseDeactivateOperation will parse deactivate operation
-func ParseDeactivateOperation(request []byte, p protocol.Protocol) (*batch.Operation, error) {
+func (p *OperationParser) ParseDeactivateOperation(request []byte) (*batch.Operation, error) {
 	schema, err := parseDeactivateRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	signedData, err := ParseSignedDataForDeactivate(schema.SignedData, p)
+	signedData, err := p.ParseSignedDataForDeactivate(schema.SignedData)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +66,8 @@ func validateDeactivateRequest(req *model.DeactivateRequest) error {
 }
 
 // ParseSignedDataForDeactivate will parse and validate signed data for deactivate
-func ParseSignedDataForDeactivate(compactJWS string, p protocol.Protocol) (*model.DeactivateSignedDataModel, error) {
-	jws, err := parseSignedData(compactJWS, p)
+func (p *OperationParser) ParseSignedDataForDeactivate(compactJWS string) (*model.DeactivateSignedDataModel, error) {
+	jws, err := p.parseSignedData(compactJWS)
 	if err != nil {
 		return nil, fmt.Errorf("deactivate: %s", err.Error())
 	}

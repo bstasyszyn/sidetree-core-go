@@ -23,12 +23,12 @@ type compressionProvider interface {
 // OperationHandler creates batch files(chunk, map, anchor) from batch operations
 type OperationHandler struct {
 	cas      cas.Client
-	protocol protocol.Client
+	protocol protocol.Protocol
 	cp       compressionProvider
 }
 
 // NewOperationHandler returns new operations handler
-func NewOperationHandler(cas cas.Client, p protocol.Client, cp compressionProvider) *OperationHandler {
+func NewOperationHandler(p protocol.Protocol, cas cas.Client, cp compressionProvider) *OperationHandler {
 	return &OperationHandler{cas: cas, protocol: p, cp: cp}
 }
 
@@ -96,12 +96,7 @@ func (h *OperationHandler) writeModelToCAS(model interface{}, alias string) (str
 
 	logger.Debugf("%s file: %s", alias, string(bytes))
 
-	currentProtocol, err := h.protocol.Current()
-	if err != nil {
-		return "", err
-	}
-
-	compressedBytes, err := h.cp.Compress(currentProtocol.CompressionAlgorithm, bytes)
+	compressedBytes, err := h.cp.Compress(h.protocol.CompressionAlgorithm, bytes)
 	if err != nil {
 		return "", err
 	}

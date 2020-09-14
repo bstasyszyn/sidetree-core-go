@@ -25,14 +25,11 @@ import (
 	"strings"
 
 	"github.com/trustbloc/edge-core/pkg/log"
-
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
-	"github.com/trustbloc/sidetree-core-go/pkg/composer"
 	"github.com/trustbloc/sidetree-core-go/pkg/document"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
 	"github.com/trustbloc/sidetree-core-go/pkg/internal/request"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/patch"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 )
@@ -52,7 +49,6 @@ type DocumentHandler struct {
 	writer    BatchWriter
 	validator DocumentValidator
 	namespace string
-	composer  docComposer
 }
 
 // OperationProcessor is an interface which resolves the document based on the ID
@@ -72,10 +68,6 @@ type DocumentValidator interface {
 	TransformDocument(doc document.Document) (*document.ResolutionResult, error)
 }
 
-type docComposer interface {
-	ApplyPatches(doc document.Document, patches []patch.Patch) (document.Document, error)
-}
-
 // New creates a new requestHandler with the context
 func New(namespace string, protocol protocol.Client, validator DocumentValidator, writer BatchWriter, processor OperationProcessor) *DocumentHandler {
 	return &DocumentHandler{
@@ -84,7 +76,6 @@ func New(namespace string, protocol protocol.Client, validator DocumentValidator
 		writer:    writer,
 		validator: validator,
 		namespace: namespace,
-		composer:  composer.New(),
 	}
 }
 
@@ -212,11 +203,11 @@ func (r *DocumentHandler) resolveRequestWithInitialState(id string, initial *mod
 	}
 
 	// verify size of create request does not exceed the maximum allowed limit
-	if len(initialBytes) > int(currentProtocol.MaxOperationSize) {
+	if len(initialBytes) > int(currentProtocol.Protocol().MaxOperationSize) {
 		return nil, fmt.Errorf("%s: operation byte size exceeds protocol max operation byte size", badRequest)
 	}
 
-	op, err := operation.ParseCreateOperation(initialBytes, currentProtocol)
+	op, err := currentProtocol.OperationParser().ParseCreate(initialBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %s", badRequest, err.Error())
 	}
@@ -270,7 +261,7 @@ func (r *DocumentHandler) validateOperation(operation *batch.Operation) error {
 	}
 
 	// check maximum operation size against protocol
-	if len(operation.OperationBuffer) > int(currentProtocol.MaxOperationSize) {
+	if len(operation.OperationBuffer) > int(currentProtocol.Protocol().MaxOperationSize) {
 		return errors.New("operation byte size exceeds protocol max operation byte size")
 	}
 
@@ -312,5 +303,10 @@ func getSuffix(namespace, idOrDocument string) (string, error) {
 }
 
 func (r *DocumentHandler) getInitialDocument(patches []patch.Patch) (document.Document, error) {
-	return r.composer.ApplyPatches(make(document.Document), patches)
+	p, err := r.protocol.Current()
+	if err != nil {
+		return nil, err
+	}
+
+	return p.DocumentComposer().ApplyPatches(make(document.Document), patches)
 }

@@ -16,7 +16,6 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/txn"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/txnhandler/models"
 )
 
@@ -43,20 +42,41 @@ func NewOperationProvider(cas DCAS, pcp protocol.ClientProvider, dp decompressio
 	return &OperationProvider{cas: cas, pcp: pcp, dp: dp}
 }
 
+type OperationProtocolProvider struct {
+	protocol.Protocol
+	parser protocol.OperationParser
+	cas    DCAS
+	dp     decompressionProvider
+}
+
+func NewOperationProtocolProvider(p protocol.Protocol, parser protocol.OperationParser, cas DCAS, dp decompressionProvider) *OperationProtocolProvider {
+	return &OperationProtocolProvider{
+		Protocol: p,
+		parser:   parser,
+		cas:      cas,
+		dp:       dp,
+	}
+}
+
 // GetTxnOperations will read batch files(Chunk, map, anchor) and assemble batch operations from those files
 func (h *OperationProvider) GetTxnOperations(txn *txn.SidetreeTxn) ([]*batch.AnchoredOperation, error) {
+	v, err := h.protocolAtTime(txn.Namespace, txn.TransactionTime)
+	if err != nil {
+		return nil, err
+	}
+
+	return v.OperationProtocolProvider().GetTxnOperations(txn)
+}
+
+// GetTxnOperations will read batch files(Chunk, map, anchor) and assemble batch operations from those files
+func (h *OperationProtocolProvider) GetTxnOperations(txn *txn.SidetreeTxn) ([]*batch.AnchoredOperation, error) {
 	// ParseAnchorData anchor address and number of operations from anchor string
 	anchorData, err := ParseAnchorData(txn.AnchorString)
 	if err != nil {
 		return nil, err
 	}
 
-	txnProtocol, err := h.protocolAtTime(txn.Namespace, txn.TransactionTime)
-	if err != nil {
-		return nil, err
-	}
-
-	af, err := h.getAnchorFile(anchorData.AnchorAddress, txnProtocol)
+	af, err := h.getAnchorFile(anchorData.AnchorAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +91,13 @@ func (h *OperationProvider) GetTxnOperations(txn *txn.SidetreeTxn) ([]*batch.Anc
 		return anchorOps.Deactivate, nil
 	}
 
-	mf, err := h.getMapFile(af.MapFileHash, txnProtocol)
+	mf, err := h.getMapFile(af.MapFileHash)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkAddress := mf.Chunks[0].ChunkFileURI
-	cf, err := h.getChunkFile(chunkAddress, txnProtocol)
+	cf, err := h.getChunkFile(chunkAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +114,7 @@ func (h *OperationProvider) GetTxnOperations(txn *txn.SidetreeTxn) ([]*batch.Anc
 	return txnOps, nil
 }
 
-func (h *OperationProvider) assembleBatchOperations(af *models.AnchorFile, mf *models.MapFile, cf *models.ChunkFile, txn *txn.SidetreeTxn) ([]*batch.AnchoredOperation, error) {
+func (h *OperationProtocolProvider) assembleBatchOperations(af *models.AnchorFile, mf *models.MapFile, cf *models.ChunkFile, txn *txn.SidetreeTxn) ([]*batch.AnchoredOperation, error) {
 	anchorOps, err := h.parseAnchorOperations(af, txn)
 	if err != nil {
 		return nil, fmt.Errorf("parse anchor operations: %s", err.Error())
@@ -128,12 +148,7 @@ func (h *OperationProvider) assembleBatchOperations(af *models.AnchorFile, mf *m
 	operations = append(operations, anchorOps.Deactivate...)
 
 	for i, delta := range cf.Deltas {
-		p, err := h.getProtocol(txn)
-		if err != nil {
-			return nil, err
-		}
-
-		_, err = operation.ParseDelta(delta, p)
+		_, err = h.parser.ParseDelta(delta)
 		if err != nil {
 			return nil, fmt.Errorf("parse delta: %s", err.Error())
 		}
@@ -165,8 +180,8 @@ func checkForDuplicates(values []string) error {
 }
 
 // getAnchorFile will download anchor file from cas and parse it into anchor file model
-func (h *OperationProvider) getAnchorFile(address string, p protocol.Protocol) (*models.AnchorFile, error) {
-	content, err := h.readFromCAS(address, p.CompressionAlgorithm, p.MaxAnchorFileSize)
+func (h *OperationProtocolProvider) getAnchorFile(address string) (*models.AnchorFile, error) {
+	content, err := h.readFromCAS(address, h.CompressionAlgorithm, h.MaxAnchorFileSize)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading anchor file[%s]", address)
 	}
@@ -180,8 +195,8 @@ func (h *OperationProvider) getAnchorFile(address string, p protocol.Protocol) (
 }
 
 // getMapFile will download map file from cas and parse it into map file model
-func (h *OperationProvider) getMapFile(address string, p protocol.Protocol) (*models.MapFile, error) {
-	content, err := h.readFromCAS(address, p.CompressionAlgorithm, p.MaxMapFileSize)
+func (h *OperationProtocolProvider) getMapFile(address string) (*models.MapFile, error) {
+	content, err := h.readFromCAS(address, h.CompressionAlgorithm, h.MaxMapFileSize)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading map file[%s]", address)
 	}
@@ -195,8 +210,8 @@ func (h *OperationProvider) getMapFile(address string, p protocol.Protocol) (*mo
 }
 
 // getChunkFile will download chunk file from cas and parse it into chunk file model
-func (h *OperationProvider) getChunkFile(address string, p protocol.Protocol) (*models.ChunkFile, error) {
-	content, err := h.readFromCAS(address, p.CompressionAlgorithm, p.MaxChunkFileSize)
+func (h *OperationProtocolProvider) getChunkFile(address string) (*models.ChunkFile, error) {
+	content, err := h.readFromCAS(address, h.CompressionAlgorithm, h.MaxChunkFileSize)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error reading chunk file[%s]", address)
 	}
@@ -209,7 +224,7 @@ func (h *OperationProvider) getChunkFile(address string, p protocol.Protocol) (*
 	return cf, nil
 }
 
-func (h *OperationProvider) readFromCAS(address, alg string, maxSize uint) ([]byte, error) {
+func (h *OperationProtocolProvider) readFromCAS(address, alg string, maxSize uint) ([]byte, error) {
 	bytes, err := h.cas.Read(address)
 	if err != nil {
 		return nil, errors.Wrapf(err, "retrieve CAS content[%s]", address)
@@ -235,24 +250,19 @@ type anchorOperations struct {
 	Suffixes   []string
 }
 
-func (h *OperationProvider) parseAnchorOperations(af *models.AnchorFile, txn *txn.SidetreeTxn) (*anchorOperations, error) { //nolint: funlen
+func (h *OperationProtocolProvider) parseAnchorOperations(af *models.AnchorFile, txn *txn.SidetreeTxn) (*anchorOperations, error) { //nolint: funlen
 	logger.Debugf("parsing anchor operations for anchor address: %s", txn.AnchorString)
-
-	p, err := h.getProtocol(txn)
-	if err != nil {
-		return nil, fmt.Errorf("parsing anchor operations: %s", err.Error())
-	}
 
 	var suffixes []string
 
 	var createOps []*batch.AnchoredOperation
 	for _, op := range af.Operations.Create {
-		suffix, err := docutil.CalculateUniqueSuffix(op.SuffixData, p.HashAlgorithmInMultiHashCode)
+		suffix, err := docutil.CalculateUniqueSuffix(op.SuffixData, h.HashAlgorithmInMultiHashCode)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = operation.ParseSuffixData(op.SuffixData, p)
+		_, err = h.parser.ParseSuffixData(op.SuffixData)
 		if err != nil {
 			return nil, err
 		}
@@ -301,19 +311,19 @@ func (h *OperationProvider) parseAnchorOperations(af *models.AnchorFile, txn *tx
 	}, nil
 }
 
-func (h *OperationProvider) getProtocol(txn *txn.SidetreeTxn) (protocol.Protocol, error) {
+func (h *OperationProvider) getProtocol(txn *txn.SidetreeTxn) (protocol.Version, error) {
 	pc, err := h.pcp.ForNamespace(txn.Namespace)
 	if err != nil {
-		return protocol.Protocol{}, err
+		return nil, err
 	}
 
 	return pc.Get(txn.TransactionTime)
 }
 
-func (h *OperationProvider) protocolAtTime(ns string, time uint64) (protocol.Protocol, error) {
+func (h *OperationProvider) protocolAtTime(ns string, time uint64) (protocol.Version, error) {
 	pc, err := h.pcp.ForNamespace(ns)
 	if err != nil {
-		return protocol.Protocol{}, err
+		return nil, err
 	}
 
 	return pc.Get(time)

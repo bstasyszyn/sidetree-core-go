@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	batchapi "github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/cas"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"

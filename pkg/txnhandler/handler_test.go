@@ -269,7 +269,8 @@ func generateCreateOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func generateRecoverOperation(num int) (*batch.Operation, error) {
@@ -307,7 +308,8 @@ func generateRecoverOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func generateDeactivateOperation(num int) (*batch.Operation, error) {
@@ -331,7 +333,8 @@ func generateDeactivateOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func generateUpdateOperation(num int) (*batch.Operation, error) {
@@ -369,7 +372,8 @@ func generateUpdateOperation(num int) (*batch.Operation, error) {
 		panic(err)
 	}
 
-	return operation.ParseOperation(defaultNS, request, cp)
+	parser := operation.NewParser(cp.Protocol())
+	return parser.Parse(defaultNS, request)
 }
 
 func getTestPatch() (patch.Patch, error) {

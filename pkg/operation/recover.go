@@ -13,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
-	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
 	internal "github.com/trustbloc/sidetree-core-go/pkg/internal/jws"
 	"github.com/trustbloc/sidetree-core-go/pkg/jws"
@@ -21,18 +20,18 @@ import (
 )
 
 // ParseRecoverOperation will parse recover operation
-func ParseRecoverOperation(request []byte, protocol protocol.Protocol) (*batch.Operation, error) {
+func (p *OperationParser) ParseRecoverOperation(request []byte) (*batch.Operation, error) {
 	schema, err := parseRecoverRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	delta, err := ParseDelta(schema.Delta, protocol)
+	delta, err := p.ParseDelta(schema.Delta)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = ParseSignedDataForRecover(schema.SignedData, protocol)
+	_, err = p.ParseSignedDataForRecover(schema.SignedData)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +61,8 @@ func parseRecoverRequest(payload []byte) (*model.RecoverRequest, error) {
 }
 
 // ParseSignedDataForRecover will parse and validate signed data for recover
-func ParseSignedDataForRecover(compactJWS string, p protocol.Protocol) (*model.RecoverSignedDataModel, error) {
-	jws, err := parseSignedData(compactJWS, p)
+func (p *OperationParser) ParseSignedDataForRecover(compactJWS string) (*model.RecoverSignedDataModel, error) {
+	jws, err := p.parseSignedData(compactJWS)
 	if err != nil {
 		return nil, fmt.Errorf("recover: %s", err.Error())
 	}
@@ -74,14 +73,14 @@ func ParseSignedDataForRecover(compactJWS string, p protocol.Protocol) (*model.R
 		return nil, fmt.Errorf("failed to unmarshal signed data model for recover: %s", err.Error())
 	}
 
-	if err := validateSignedDataForRecovery(schema, p); err != nil {
+	if err := p.validateSignedDataForRecovery(schema); err != nil {
 		return nil, err
 	}
 
 	return schema, nil
 }
 
-func validateSignedDataForRecovery(signedData *model.RecoverSignedDataModel, p protocol.Protocol) error {
+func (p *OperationParser) validateSignedDataForRecovery(signedData *model.RecoverSignedDataModel) error {
 	if err := validateSigningKey(signedData.RecoveryKey, p.KeyAlgorithms); err != nil {
 		return fmt.Errorf("signed data for recovery: %s", err.Error())
 	}
@@ -98,7 +97,7 @@ func validateSignedDataForRecovery(signedData *model.RecoverSignedDataModel, p p
 	return nil
 }
 
-func parseSignedData(compactJWS string, p protocol.Protocol) (*internal.JSONWebSignature, error) {
+func (p *OperationParser) parseSignedData(compactJWS string) (*internal.JSONWebSignature, error) {
 	if compactJWS == "" {
 		return nil, errors.New("missing signed data")
 	}

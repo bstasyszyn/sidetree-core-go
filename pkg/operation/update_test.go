@@ -28,16 +28,19 @@ func TestParseUpdateOperation(t *testing.T) {
 		SignatureAlgorithms:          []string{"alg"},
 		KeyAlgorithms:                []string{"crv"},
 	}
+
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		payload, err := getUpdateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseUpdateOperation(payload, p)
+		op, err := parser.ParseUpdateOperation(payload)
 		require.NoError(t, err)
 		require.Equal(t, batch.OperationTypeUpdate, op.Type)
 	})
 	t.Run("invalid json", func(t *testing.T) {
-		schema, err := ParseUpdateOperation([]byte(""), p)
+		schema, err := parser.ParseUpdateOperation([]byte(""))
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "unexpected end of JSON input")
@@ -50,7 +53,7 @@ func TestParseUpdateOperation(t *testing.T) {
 		payload, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		schema, err := ParseUpdateOperation(payload, p)
+		schema, err := parser.ParseUpdateOperation(payload)
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "missing did suffix")
@@ -65,7 +68,7 @@ func TestParseUpdateOperation(t *testing.T) {
 		payload, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		schema, err := ParseUpdateOperation(payload, p)
+		schema, err := parser.ParseUpdateOperation(payload)
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(),
@@ -82,7 +85,7 @@ func TestParseUpdateOperation(t *testing.T) {
 		payload, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		schema, err := ParseUpdateOperation(payload, p)
+		schema, err := parser.ParseUpdateOperation(payload)
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "invalid JWS compact format")
@@ -98,7 +101,7 @@ func TestParseUpdateOperation(t *testing.T) {
 		request, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		op, err := ParseUpdateOperation(request, p)
+		op, err := parser.ParseUpdateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal signed data model for update")
 		require.Nil(t, op)
@@ -112,16 +115,18 @@ func TestParseSignedDataForUpdate(t *testing.T) {
 		KeyAlgorithms:                []string{"crv"},
 	}
 
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		req, err := getDefaultUpdateRequest()
 		require.NoError(t, err)
 
-		schema, err := ParseSignedDataForUpdate(req.SignedData, p)
+		schema, err := parser.ParseSignedDataForUpdate(req.SignedData)
 		require.NoError(t, err)
 		require.NotNil(t, schema)
 	})
 	t.Run("invalid JWS compact format", func(t *testing.T) {
-		schema, err := ParseSignedDataForUpdate("invalid", p)
+		schema, err := parser.ParseSignedDataForUpdate("invalid")
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "invalid JWS compact format")
@@ -137,7 +142,7 @@ func TestParseSignedDataForUpdate(t *testing.T) {
 
 		compactJWS, err := signutil.SignPayload(payload, NewMockSigner())
 
-		schema, err := ParseSignedDataForUpdate(compactJWS, p)
+		schema, err := parser.ParseSignedDataForUpdate(compactJWS)
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "delta hash is not computed with the required hash algorithm: 18")
@@ -146,7 +151,7 @@ func TestParseSignedDataForUpdate(t *testing.T) {
 		compactJWS, err := signutil.SignPayload([]byte("test"), NewMockSigner())
 		require.NoError(t, err)
 
-		schema, err := ParseSignedDataForUpdate(compactJWS, p)
+		schema, err := parser.ParseSignedDataForUpdate(compactJWS)
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "invalid character")
@@ -159,11 +164,13 @@ func TestValidateUpdateDelta(t *testing.T) {
 			HashAlgorithmInMultiHashCode: sha2_256,
 		}
 
+		parser := NewParser(p)
+
 		delta, err := getUpdateDelta()
 		require.NoError(t, err)
 
 		delta.UpdateCommitment = ""
-		err = validateDelta(delta, p)
+		err = parser.validateDelta(delta)
 		require.Error(t, err)
 		require.Contains(t, err.Error(),
 			"next update commitment hash is not computed with the required supported hash algorithm")
@@ -171,11 +178,13 @@ func TestValidateUpdateDelta(t *testing.T) {
 }
 
 func TestValidateUpdateRequest(t *testing.T) {
+	parser := NewParser(protocol.Protocol{})
+
 	t.Run("success", func(t *testing.T) {
 		update, err := getDefaultUpdateRequest()
 		require.NoError(t, err)
 
-		err = validateUpdateRequest(update)
+		err = parser.validateUpdateRequest(update)
 		require.NoError(t, err)
 	})
 	t.Run("missing signed data", func(t *testing.T) {
@@ -183,7 +192,7 @@ func TestValidateUpdateRequest(t *testing.T) {
 		require.NoError(t, err)
 		update.SignedData = ""
 
-		err = validateUpdateRequest(update)
+		err = parser.validateUpdateRequest(update)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing signed data")
 	})
@@ -192,7 +201,7 @@ func TestValidateUpdateRequest(t *testing.T) {
 		require.NoError(t, err)
 		update.DidSuffix = ""
 
-		err = validateUpdateRequest(update)
+		err = parser.validateUpdateRequest(update)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing did suffix")
 	})
@@ -201,7 +210,7 @@ func TestValidateUpdateRequest(t *testing.T) {
 		require.NoError(t, err)
 		update.Delta = ""
 
-		err = validateUpdateRequest(update)
+		err = parser.validateUpdateRequest(update)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing delta")
 	})

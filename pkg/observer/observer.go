@@ -13,6 +13,7 @@ import (
 	"github.com/trustbloc/edge-core/pkg/log"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
+	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/txn"
 )
 
@@ -21,18 +22,6 @@ var logger = log.New("sidetree-core-observer")
 // Ledger interface to access ledger txn
 type Ledger interface {
 	RegisterForSidetreeTxn() <-chan []txn.SidetreeTxn
-}
-
-// TxnOpsProvider defines an interface for retrieving(assembling) operations from batch files(chunk, map, anchor)
-type TxnOpsProvider interface {
-	// GetTxnOperations will read batch files(chunk, map, anchor) and assemble batch operations from those files
-	GetTxnOperations(txn *txn.SidetreeTxn) ([]*batch.AnchoredOperation, error)
-}
-
-// DecompressionProvider defines an interface for decompressing data using specified algorithm
-type DecompressionProvider interface {
-	// Decompress will decompress compressed data using specified algorithm
-	Decompress(alg string, data []byte) ([]byte, error)
 }
 
 // OperationStore interface to access operation store
@@ -50,20 +39,22 @@ type OperationFilter interface {
 	Filter(uniqueSuffix string, ops []*batch.AnchoredOperation) ([]*batch.AnchoredOperation, error)
 }
 
+type TxnProcessorProviders struct {
+	OpStoreProvider           OperationStoreProvider
+	OperationProtocolProvider protocol.OperationProtocolProvider
+}
+
 // Providers contains all of the providers required by the TxnProcessor
 type Providers struct {
-	Ledger                Ledger
-	TxnOpsProvider        TxnOpsProvider
-	OpStoreProvider       OperationStoreProvider
-	DecompressionProvider DecompressionProvider
+	Ledger                 Ledger
+	ProtocolClientProvider protocol.ClientProvider
 }
 
 // Observer receives transactions over a channel and processes them by storing them to an operation store
 type Observer struct {
 	*Providers
 
-	processor *TxnProcessor
-	stopCh    chan struct{}
+	stopCh chan struct{}
 }
 
 // New returns a new observer
@@ -71,7 +62,6 @@ func New(providers *Providers) *Observer {
 	return &Observer{
 		Providers: providers,
 		stopCh:    make(chan struct{}, 1),
-		processor: NewTxnProcessor(providers),
 	}
 }
 
@@ -105,7 +95,21 @@ func (o *Observer) listen(txnsCh <-chan []txn.SidetreeTxn) {
 
 func (o *Observer) process(txns []txn.SidetreeTxn) {
 	for _, txn := range txns {
-		err := o.processor.Process(txn)
+		pc, err := o.ProtocolClientProvider.ForNamespace(txn.Namespace)
+		if err != nil {
+			logger.Warnf("Failed to get protocol client for namespace [%s]: %s", txn.Namespace, err.Error())
+			// TODO: Should we continue processing?
+			continue
+		}
+
+		v, err := pc.Get(txn.TransactionTime)
+		if err != nil {
+			logger.Warnf("Failed to get processor for transaction time [%d]: %s", txn.TransactionTime, err.Error())
+			// TODO: Should we continue processing?
+			continue
+		}
+
+		err = v.TransactionProcessor().Process(txn)
 		if err != nil {
 			logger.Warnf("Failed to process anchor[%s]: %s", txn.AnchorString, err.Error())
 			continue
@@ -116,13 +120,13 @@ func (o *Observer) process(txns []txn.SidetreeTxn) {
 
 // TxnProcessor processes Sidetree transactions by persisting them to an operation store
 type TxnProcessor struct {
-	*Providers
+	*TxnProcessorProviders
 }
 
 // NewTxnProcessor returns a new document operation processor
-func NewTxnProcessor(providers *Providers) *TxnProcessor {
+func NewTxnProcessor(providers *TxnProcessorProviders) *TxnProcessor {
 	return &TxnProcessor{
-		Providers: providers,
+		TxnProcessorProviders: providers,
 	}
 }
 
@@ -130,7 +134,7 @@ func NewTxnProcessor(providers *Providers) *TxnProcessor {
 func (p *TxnProcessor) Process(sidetreeTxn txn.SidetreeTxn) error {
 	logger.Debugf("processing sidetree txn:%+v", sidetreeTxn)
 
-	txnOps, err := p.TxnOpsProvider.GetTxnOperations(&sidetreeTxn)
+	txnOps, err := p.OperationProtocolProvider.GetTxnOperations(&sidetreeTxn)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve operations for anchor string[%s]: %s", sidetreeTxn.AnchorString, err)
 	}

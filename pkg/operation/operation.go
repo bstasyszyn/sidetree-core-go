@@ -16,8 +16,18 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 )
 
-// ParseOperation parses and validates operation
-func ParseOperation(namespace string, operationBuffer []byte, protocol protocol.Protocol) (*batch.Operation, error) {
+type OperationParser struct {
+	protocol.Protocol
+}
+
+func NewParser(p protocol.Protocol) *OperationParser {
+	return &OperationParser{
+		Protocol: p,
+	}
+}
+
+// Parse parses and validates operation
+func (p *OperationParser) Parse(namespace string, operationBuffer []byte) (*batch.Operation, error) {
 	schema := &operationSchema{}
 	err := json.Unmarshal(operationBuffer, schema)
 	if err != nil {
@@ -28,13 +38,13 @@ func ParseOperation(namespace string, operationBuffer []byte, protocol protocol.
 	var parseErr error
 	switch schema.Operation {
 	case model.OperationTypeCreate:
-		op, parseErr = ParseCreateOperation(operationBuffer, protocol)
+		op, parseErr = p.ParseCreateOperation(operationBuffer)
 	case model.OperationTypeUpdate:
-		op, parseErr = ParseUpdateOperation(operationBuffer, protocol)
+		op, parseErr = p.ParseUpdateOperation(operationBuffer)
 	case model.OperationTypeDeactivate:
-		op, parseErr = ParseDeactivateOperation(operationBuffer, protocol)
+		op, parseErr = p.ParseDeactivateOperation(operationBuffer)
 	case model.OperationTypeRecover:
-		op, parseErr = ParseRecoverOperation(operationBuffer, protocol)
+		op, parseErr = p.ParseRecoverOperation(operationBuffer)
 	default:
 		return nil, fmt.Errorf("operation type [%s] not implemented", schema.Operation)
 	}

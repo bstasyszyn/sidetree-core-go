@@ -28,22 +28,24 @@ func TestParseDeactivateOperation(t *testing.T) {
 		KeyAlgorithms:                []string{"crv"},
 	}
 
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		payload, err := getDeactivateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseDeactivateOperation(payload, p)
+		op, err := parser.ParseDeactivateOperation(payload)
 		require.NoError(t, err)
 		require.Equal(t, batch.OperationTypeDeactivate, op.Type)
 	})
 	t.Run("missing unique suffix", func(t *testing.T) {
-		schema, err := ParseDeactivateOperation([]byte("{}"), p)
+		schema, err := parser.ParseDeactivateOperation([]byte("{}"))
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "missing unique suffix")
 	})
 	t.Run("missing signed data", func(t *testing.T) {
-		op, err := ParseDeactivateOperation([]byte(`{"did_suffix":"abc"}`), p)
+		op, err := parser.ParseDeactivateOperation([]byte(`{"did_suffix":"abc"}`))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing signed data")
 		require.Nil(t, op)
@@ -52,7 +54,7 @@ func TestParseDeactivateOperation(t *testing.T) {
 		request, err := json.Marshal("invalidJSON")
 		require.NoError(t, err)
 
-		op, err := ParseDeactivateOperation(request, p)
+		op, err := parser.ParseDeactivateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot unmarshal string")
 		require.Nil(t, op)
@@ -65,7 +67,7 @@ func TestParseDeactivateOperation(t *testing.T) {
 		request, err := json.Marshal(deactivateRequest)
 		require.NoError(t, err)
 
-		op, err := ParseDeactivateOperation(request, p)
+		op, err := parser.ParseDeactivateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid JWS compact format")
 		require.Nil(t, op)
@@ -80,7 +82,7 @@ func TestParseDeactivateOperation(t *testing.T) {
 		request, err := json.Marshal(recoverRequest)
 		require.NoError(t, err)
 
-		op, err := ParseDeactivateOperation(request, p)
+		op, err := parser.ParseDeactivateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "signed did suffix mismatch for deactivate")
 		require.Nil(t, op)
@@ -96,7 +98,7 @@ func TestParseDeactivateOperation(t *testing.T) {
 		request, err := json.Marshal(deactivateRequest)
 		require.NoError(t, err)
 
-		op, err := ParseDeactivateOperation(request, p)
+		op, err := parser.ParseDeactivateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal signed data model for deactivate")
 		require.Nil(t, op)
@@ -107,11 +109,12 @@ func TestParseDeactivateOperation(t *testing.T) {
 			SignatureAlgorithms:          []string{"alg"},
 			KeyAlgorithms:                []string{"other"},
 		}
+		parser := NewParser(p)
 
 		request, err := getDeactivateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseDeactivateOperation(request, p)
+		op, err := parser.ParseDeactivateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "signed data for deactivate: key algorithm 'crv' is not in the allowed list [other]")
 		require.Nil(t, op)

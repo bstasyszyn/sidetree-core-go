@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/sidetree-core-go/pkg/composer"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
@@ -48,7 +49,8 @@ func TestResolve(t *testing.T) {
 	updateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
+	parser := operation.NewParser(pc.Protocol)
 
 	t.Run("success", func(t *testing.T) {
 		store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
@@ -82,7 +84,7 @@ func TestResolve(t *testing.T) {
 
 	t.Run("protocol error", func(t *testing.T) {
 		pcWithErr := mocks.NewMockProtocolClient()
-		pcWithErr.Versions = []protocol.Protocol{}
+		pcWithErr.Versions = nil
 
 		store, _ := getDefaultStore(recoveryKey, updateKey)
 		op := New("test", store, pcWithErr)
@@ -90,7 +92,7 @@ func TestResolve(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		doc, err := op.applyOperation(createOp, &resolutionModel{})
+		doc, err := op.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.Nil(t, doc)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "apply 'create' operation: protocol parameters are not defined for blockchain time")
@@ -117,8 +119,8 @@ func TestResolve(t *testing.T) {
 
 		p := New("test", store, pc)
 		doc, err := p.Resolve(createOp.UniqueSuffix)
-		require.Nil(t, doc)
 		require.Error(t, err)
+		require.Nil(t, doc)
 		require.Contains(t, err.Error(), "valid create operation not found")
 	})
 	t.Run("create delta hash doesn't match delta error", func(t *testing.T) {
@@ -139,22 +141,30 @@ func TestResolve(t *testing.T) {
 		err = store.Put(anchoredOp)
 		require.Nil(t, err)
 
-		p := New("test", store, pc)
-		doc, err := p.applyCreateOperation(anchoredOp, pc.Protocol, &resolutionModel{})
+		a := NewApplier(pc.Protocol, parser, composer.New())
+		doc, err := a.ApplyCreateOperation(anchoredOp, &protocol.ResolutionModel{})
 		require.Nil(t, doc)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "create delta doesn't match suffix data delta hash")
 	})
 
 	t.Run("error - document composer error", func(t *testing.T) {
+		oa := &mocks.OperationApplier{}
+		oa.ApplyCreateOperationReturns(nil, errors.New("doc composer err"))
+
+		pv := &mocks.ProtocolVersion{}
+		pv.OperationApplierReturns(oa)
+
+		pc := mocks.NewMockProtocolClient()
+		pc.Versions[0] = pv
+
 		store, _ := getDefaultStore(recoveryKey, updateKey)
 		p := New("test", store, pc)
 
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		p.dc = &mockDocComposer{Err: errors.New("doc composer err")}
-		_, err = p.applyOperation(createOp, &resolutionModel{})
+		_, err = p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "doc composer err")
 	})
@@ -167,7 +177,8 @@ func TestUpdateDocument(t *testing.T) {
 	updateKey, e := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, e)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
+	parser := operation.NewParser(pc.Protocol)
 
 	t.Run("success", func(t *testing.T) {
 		store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
@@ -208,7 +219,7 @@ func TestUpdateDocument(t *testing.T) {
 		updateOp, nextUpdateKey, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
 		require.Nil(t, err)
 
-		delta1, err := operation.ParseDelta(updateOp.Delta, pc.Protocol)
+		delta1, err := parser.ParseDelta(updateOp.Delta)
 		require.NoError(t, err)
 
 		err = store.Put(updateOp)
@@ -240,7 +251,7 @@ func TestUpdateDocument(t *testing.T) {
 		updateOp, nextUpdateKey, err = getAnchoredUpdateOperation(nextUpdateKey, uniqueSuffix, 1)
 		require.Nil(t, err)
 
-		delta3, err := operation.ParseDelta(updateOp.Delta, pc.Protocol)
+		delta3, err := parser.ParseDelta(updateOp.Delta)
 		require.NoError(t, err)
 		delta3.UpdateCommitment = delta1.UpdateCommitment
 
@@ -268,7 +279,7 @@ func TestUpdateDocument(t *testing.T) {
 		updateOp, nextUpdateKey, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
 		require.Nil(t, err)
 
-		delta1, err := operation.ParseDelta(updateOp.Delta, pc.Protocol)
+		delta1, err := parser.ParseDelta(updateOp.Delta)
 		require.NoError(t, err)
 
 		err = store.Put(updateOp)
@@ -286,7 +297,7 @@ func TestUpdateDocument(t *testing.T) {
 		updateOp, nextUpdateKey, err = getAnchoredUpdateOperation(nextUpdateKey, uniqueSuffix, 1)
 		require.Nil(t, err)
 
-		delta2, err := operation.ParseDelta(updateOp.Delta, pc.Protocol)
+		delta2, err := parser.ParseDelta(updateOp.Delta)
 		require.NoError(t, err)
 		delta2.UpdateCommitment = delta1.UpdateCommitment
 
@@ -313,7 +324,7 @@ func TestUpdateDocument(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
@@ -334,7 +345,7 @@ func TestUpdateDocument(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
@@ -360,7 +371,7 @@ func TestUpdateDocument(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		updateOp, _, err := getAnchoredUpdateOperation(recoveryKey, uniqueSuffix, 77)
@@ -379,7 +390,7 @@ func TestUpdateDocument(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		// sign update operation with different  key (than one used in create)
@@ -405,7 +416,7 @@ func TestUpdateDocument(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
@@ -421,18 +432,22 @@ func TestUpdateDocument(t *testing.T) {
 
 	t.Run("error - document composer error", func(t *testing.T) {
 		store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
+
+		pc := newMockProtocolClient()
+		parser := operation.NewParser(pc.Protocol)
+
 		p := New("test", store, pc)
 
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
 		require.NoError(t, err)
 
-		p.dc = &mockDocComposer{Err: errors.New("document composer error")}
+		pc.CurrentVersion.OperationApplierReturns(NewApplier(pc.Protocol, parser, &mockDocComposer{Err: errors.New("document composer error")}))
 
 		rm, err = p.applyOperation(updateOp, rm)
 		require.Error(t, err)
@@ -448,7 +463,8 @@ func TestProcessOperation(t *testing.T) {
 	updateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
+	parser := operation.NewParser(pc.Protocol)
 
 	t.Run("update is first operation error", func(t *testing.T) {
 		store := mocks.NewMockOperationStore(nil)
@@ -473,8 +489,8 @@ func TestProcessOperation(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		p := New("test", store, pc)
-		doc, err := p.applyCreateOperation(createOp, pc.Protocol, &resolutionModel{
+		a := NewApplier(pc.Protocol, parser, &mockDocComposer{})
+		doc, err := a.ApplyCreateOperation(createOp, &protocol.ResolutionModel{
 			Doc: make(document.Document),
 		})
 		require.Error(t, err)
@@ -490,7 +506,7 @@ func TestProcessOperation(t *testing.T) {
 		require.Nil(t, err)
 
 		p := New("test", store, pc)
-		doc, err := p.applyOperation(recoverOp, &resolutionModel{})
+		doc, err := p.applyOperation(recoverOp, &protocol.ResolutionModel{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "recover can only be applied to an existing document")
 		require.Nil(t, doc)
@@ -507,7 +523,7 @@ func TestProcessOperation(t *testing.T) {
 		anchoredOp := getAnchoredOperation(deactivateOp)
 
 		p := New("test", store, pc)
-		doc, err := p.applyOperation(anchoredOp, &resolutionModel{Doc: make(document.Document)})
+		doc, err := p.applyOperation(anchoredOp, &protocol.ResolutionModel{Doc: make(document.Document)})
 		require.Error(t, err)
 		require.Equal(t, "operation type not supported for process operation", err.Error())
 		require.Nil(t, doc)
@@ -527,7 +543,8 @@ func TestDeactivate(t *testing.T) {
 	updatePubKey, err := pubkey.GetPublicKeyJWK(&updateKey.PublicKey)
 	require.NoError(t, err)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
+	parser := operation.NewParser(pc.Protocol)
 
 	t.Run("success", func(t *testing.T) {
 		store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
@@ -552,7 +569,7 @@ func TestDeactivate(t *testing.T) {
 		require.NoError(t, err)
 
 		p := New("test", store, pc)
-		doc, err := p.applyOperation(deactivateOp, &resolutionModel{})
+		doc, err := p.applyOperation(deactivateOp, &protocol.ResolutionModel{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "deactivate can only be applied to an existing document")
 		require.Nil(t, doc)
@@ -566,8 +583,8 @@ func TestDeactivate(t *testing.T) {
 		err = store.Put(deactivateOp)
 		require.NoError(t, err)
 
-		p := New("test", store, pc)
-		doc, err := p.applyDeactivateOperation(deactivateOp, pc.Protocol, &resolutionModel{})
+		a := NewApplier(pc.Protocol, parser, &mockDocComposer{})
+		doc, err := a.ApplyDeactivateOperation(deactivateOp, &protocol.ResolutionModel{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "deactivate can only be applied to an existing document")
 		require.Nil(t, doc)
@@ -580,7 +597,7 @@ func TestDeactivate(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		deactivateOp, err := getDeactivateOperation(recoveryKey, uniqueSuffix)
@@ -603,7 +620,7 @@ func TestDeactivate(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		deactivateOp, err := getDeactivateOperation(recoveryKey, uniqueSuffix)
@@ -631,7 +648,7 @@ func TestDeactivate(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		// sign recover operation with different recovery key (than one used in create)
@@ -657,7 +674,7 @@ func TestDeactivate(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		deactivateOp, err := getDeactivateOperation(recoveryKey, uniqueSuffix)
@@ -688,7 +705,7 @@ func TestDeactivate(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		deactivateOp, err := getDeactivateOperation(recoveryKey, uniqueSuffix)
@@ -720,7 +737,7 @@ func TestRecover(t *testing.T) {
 	updateKey, e := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, e)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
 
 	t.Run("success", func(t *testing.T) {
 		store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
@@ -794,7 +811,7 @@ func TestRecover(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		recoverOp, _, err := getRecoverOperation(recoveryKey, updateKey, uniqueSuffix)
@@ -817,7 +834,7 @@ func TestRecover(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		recoverOp, _, err := getRecoverOperation(recoveryKey, updateKey, uniqueSuffix)
@@ -845,7 +862,7 @@ func TestRecover(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		// sign recover operation with different recovery key (than one used in create)
@@ -878,7 +895,7 @@ func TestRecover(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		recoverOp, _, err := getRecoverOperation(recoveryKey, updateKey, uniqueSuffix)
@@ -904,7 +921,7 @@ func TestRecover(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		recoverOp, _, err := getRecoverOperation(recoveryKey, updateKey, uniqueSuffix)
@@ -921,13 +938,16 @@ func TestRecover(t *testing.T) {
 	})
 
 	t.Run("error - document composer error", func(t *testing.T) {
+		pc := newMockProtocolClient()
+		parser := operation.NewParser(pc.Protocol)
+
 		store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
 		p := New("test", store, pc)
 
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		rm, err := p.applyOperation(createOp, &resolutionModel{})
+		rm, err := p.applyOperation(createOp, &protocol.ResolutionModel{})
 		require.NoError(t, err)
 
 		recoverOp, _, err := getRecoverOperation(recoveryKey, updateKey, uniqueSuffix)
@@ -935,7 +955,8 @@ func TestRecover(t *testing.T) {
 
 		anchoredOp := getAnchoredOperation(recoverOp)
 
-		p.dc = &mockDocComposer{Err: errors.New("doc composer error")}
+		pc.CurrentVersion.OperationApplierReturns(NewApplier(pc.Protocol, parser, &mockDocComposer{Err: errors.New("doc composer error")}))
+
 		rm, err = p.applyOperation(anchoredOp, rm)
 		require.Error(t, err)
 		require.Nil(t, rm)
@@ -950,7 +971,7 @@ func TestGetOperationCommitment(t *testing.T) {
 	updateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
 
 	store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
 	p := New("test", store, pc)
@@ -996,7 +1017,7 @@ func TestGetOperationCommitment(t *testing.T) {
 
 	t.Run("error - protocol error", func(t *testing.T) {
 		pcWithoutProtocols := mocks.NewMockProtocolClient()
-		pcWithoutProtocols.Versions = []protocol.Protocol{}
+		pcWithoutProtocols.Versions = nil
 		store, _ := getDefaultStore(recoveryKey, updateKey)
 
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
@@ -1103,7 +1124,7 @@ func TestGetNextOperationCommitment(t *testing.T) {
 	updateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	pc := mocks.NewMockProtocolClient()
+	pc := newMockProtocolClient()
 
 	store, uniqueSuffix := getDefaultStore(recoveryKey, updateKey)
 	p := New("test", store, pc)
@@ -1145,7 +1166,7 @@ func TestGetNextOperationCommitment(t *testing.T) {
 
 	t.Run("error - protocol error", func(t *testing.T) {
 		pcWithoutProtocols := mocks.NewMockProtocolClient()
-		pcWithoutProtocols.Versions = []protocol.Protocol{}
+		pcWithoutProtocols.Versions = nil
 		store, _ := getDefaultStore(recoveryKey, updateKey)
 
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
@@ -1705,4 +1726,18 @@ func (m *mockDocComposer) ApplyPatches(doc document.Document, patches []patch.Pa
 	}
 
 	return make(document.Document), nil
+}
+
+func newMockProtocolClient() *mocks.MockProtocolClient {
+	pc := mocks.NewMockProtocolClient()
+	parser := operation.NewParser(pc.Protocol)
+	dc := composer.New()
+	oa := NewApplier(pc.Protocol, parser, dc)
+
+	pv := pc.CurrentVersion
+	pv.OperationParserReturns(parser)
+	pv.OperationApplierReturns(oa)
+	pv.DocumentComposerReturns(dc)
+
+	return pc
 }

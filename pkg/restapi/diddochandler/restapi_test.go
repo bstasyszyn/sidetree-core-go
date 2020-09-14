@@ -31,7 +31,7 @@ const (
 )
 
 func TestRESTAPI(t *testing.T) {
-	didDocHandler := mocks.NewMockDocumentHandler().WithNamespace(namespace)
+	didDocHandler := mocks.NewMockDocumentHandler().WithNamespace(namespace).WithProtocolClient(newMockProtocolClient())
 
 	s := newRESTService(
 		url,

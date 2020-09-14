@@ -16,14 +16,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/trustbloc/sidetree-core-go/pkg/commitment"
+	"github.com/trustbloc/sidetree-core-go/pkg/composer"
 	"github.com/trustbloc/sidetree-core-go/pkg/document"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
 	"github.com/trustbloc/sidetree-core-go/pkg/internal/canonicalizer"
 	"github.com/trustbloc/sidetree-core-go/pkg/jws"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
+	"github.com/trustbloc/sidetree-core-go/pkg/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/patch"
+	"github.com/trustbloc/sidetree-core-go/pkg/processor"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 )
 
@@ -34,7 +36,7 @@ const (
 
 func TestUpdateHandler_Update(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		docHandler := mocks.NewMockDocumentHandler().WithNamespace(namespace)
+		docHandler := mocks.NewMockDocumentHandler().WithNamespace(namespace).WithProtocolClient(newMockProtocolClient())
 		handler := NewUpdateHandler(basePath, docHandler)
 		require.Equal(t, basePath+"/operations", handler.Path())
 		require.Equal(t, http.MethodPost, handler.Method())
@@ -65,7 +67,7 @@ func TestUpdateHandler_Update(t *testing.T) {
 
 func TestUpdateHandler_Update_Error(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		docHandler := mocks.NewMockDocumentHandler().WithNamespace(namespace)
+		docHandler := mocks.NewMockDocumentHandler().WithNamespace(namespace).WithProtocolClient(newMockProtocolClient())
 		handler := NewUpdateHandler(basePath, docHandler)
 
 		createRequest, err := getCreateRequest()
@@ -185,4 +187,18 @@ var testJWK = &jws.JWK{
 	Kty: "kty",
 	Crv: "crv",
 	X:   "x",
+}
+
+func newMockProtocolClient() *mocks.MockProtocolClient {
+	pc := mocks.NewMockProtocolClient()
+	parser := operation.NewParser(pc.Protocol)
+	dc := composer.New()
+	oa := processor.NewApplier(pc.Protocol, parser, dc)
+
+	pv := pc.CurrentVersion
+	pv.OperationParserReturns(parser)
+	pv.OperationApplierReturns(oa)
+	pv.DocumentComposerReturns(dc)
+
+	return pc
 }

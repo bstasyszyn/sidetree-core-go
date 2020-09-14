@@ -13,7 +13,6 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/document"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/common"
 )
 
@@ -75,5 +74,5 @@ func (h *UpdateHandler) getOperation(operationBuffer []byte) (*batch.Operation, 
 		return nil, err
 	}
 
-	return operation.ParseOperation(h.processor.Namespace(), operationBuffer, currentProtocol)
+	return currentProtocol.OperationParser().Parse(h.processor.Namespace(), operationBuffer)
 }

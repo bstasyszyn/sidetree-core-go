@@ -30,16 +30,18 @@ func TestParseCreateOperation(t *testing.T) {
 		HashAlgorithmInMultiHashCode: sha2_256,
 	}
 
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		request, err := getCreateRequestBytes()
 		require.NoError(t, err)
 
-		op, err := ParseCreateOperation(request, p)
+		op, err := parser.ParseCreateOperation(request)
 		require.NoError(t, err)
 		require.Equal(t, batch.OperationTypeCreate, op.Type)
 	})
 	t.Run("parse create request error", func(t *testing.T) {
-		schema, err := ParseCreateOperation([]byte(""), p)
+		schema, err := parser.ParseCreateOperation([]byte(""))
 		require.Error(t, err)
 		require.Nil(t, schema)
 		require.Contains(t, err.Error(), "unexpected end of JSON input")
@@ -52,7 +54,7 @@ func TestParseCreateOperation(t *testing.T) {
 		request, err := json.Marshal(create)
 		require.NoError(t, err)
 
-		op, err := ParseCreateOperation(request, p)
+		op, err := parser.ParseCreateOperation(request)
 		require.Error(t, err)
 		require.Nil(t, op)
 		require.Contains(t, err.Error(), "missing suffix data")
@@ -66,7 +68,7 @@ func TestParseCreateOperation(t *testing.T) {
 		request, err := json.Marshal(create)
 		require.NoError(t, err)
 
-		op, err := ParseCreateOperation(request, p)
+		op, err := parser.ParseCreateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid character")
 		require.Nil(t, op)
@@ -79,7 +81,7 @@ func TestParseCreateOperation(t *testing.T) {
 		request, err := json.Marshal(create)
 		require.NoError(t, err)
 
-		op, err := ParseCreateOperation(request, p)
+		op, err := parser.ParseCreateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid character")
 		require.Nil(t, op)
@@ -99,7 +101,7 @@ func TestParseCreateOperation(t *testing.T) {
 		request, err := json.Marshal(create)
 		require.NoError(t, err)
 
-		op, err := ParseCreateOperation(request, p)
+		op, err := parser.ParseCreateOperation(request)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "delta doesn't match suffix data delta hash")
 		require.Nil(t, op)
@@ -111,7 +113,9 @@ func TestParseSuffixData(t *testing.T) {
 		HashAlgorithmInMultiHashCode: sha2_256,
 	}
 
-	suffixData, err := ParseSuffixData(interopEncodedSuffixData, p)
+	parser := NewParser(p)
+
+	suffixData, err := parser.ParseSuffixData(interopEncodedSuffixData)
 	require.NoError(t, err)
 	require.NotNil(t, suffixData)
 
@@ -125,12 +129,14 @@ func TestValidateSuffixData(t *testing.T) {
 		HashAlgorithmInMultiHashCode: sha2_256,
 	}
 
+	parser := NewParser(p)
+
 	t.Run("invalid patch data hash", func(t *testing.T) {
 		suffixData, err := getSuffixData()
 		require.NoError(t, err)
 
 		suffixData.DeltaHash = ""
-		err = validateSuffixData(suffixData, p)
+		err = parser.validateSuffixData(suffixData)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "patch data hash is not computed with the required supported hash algorithm")
 	})
@@ -139,7 +145,7 @@ func TestValidateSuffixData(t *testing.T) {
 		require.NoError(t, err)
 
 		suffixData.RecoveryCommitment = ""
-		err = validateSuffixData(suffixData, p)
+		err = parser.validateSuffixData(suffixData)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "next recovery commitment hash is not computed with the required supported hash algorithm")
 	})
@@ -152,7 +158,9 @@ func TestParseDelta(t *testing.T) {
 			EnableReplacePatch:           true,
 		}
 
-		delta, err := ParseDelta(interopEncodedDelta, p)
+		parser := NewParser(p)
+
+		delta, err := parser.ParseDelta(interopEncodedDelta)
 		require.NoError(t, err)
 		require.NotNil(t, delta)
 	})
@@ -161,7 +169,9 @@ func TestParseDelta(t *testing.T) {
 			HashAlgorithmInMultiHashCode: sha2_256,
 		}
 
-		delta, err := ParseDelta(interopEncodedDelta, p)
+		parser := NewParser(p)
+
+		delta, err := parser.ParseDelta(interopEncodedDelta)
 		require.Error(t, err)
 		require.Nil(t, delta)
 		require.Contains(t, err.Error(), "replace patch action is not enabled")
@@ -173,12 +183,14 @@ func TestValidateDelta(t *testing.T) {
 		HashAlgorithmInMultiHashCode: sha2_256,
 	}
 
+	parser := NewParser(p)
+
 	t.Run("invalid next update commitment hash", func(t *testing.T) {
 		delta, err := getDelta()
 		require.NoError(t, err)
 
 		delta.UpdateCommitment = ""
-		err = validateDelta(delta, p)
+		err = parser.validateDelta(delta)
 		require.Error(t, err)
 		require.Contains(t, err.Error(),
 			"next update commitment hash is not computed with the required supported hash algorithm")
@@ -188,7 +200,7 @@ func TestValidateDelta(t *testing.T) {
 		require.NoError(t, err)
 
 		delta.Patches = []patch.Patch{}
-		err = validateDelta(delta, p)
+		err = parser.validateDelta(delta)
 		require.Error(t, err)
 		require.Contains(t, err.Error(),
 			"missing patches")
@@ -196,11 +208,15 @@ func TestValidateDelta(t *testing.T) {
 }
 
 func TestValidateCreateRequest(t *testing.T) {
+	p := protocol.Protocol{}
+
+	parser := NewParser(p)
+
 	t.Run("success", func(t *testing.T) {
 		create, err := getCreateRequest()
 		require.NoError(t, err)
 
-		err = validateCreateRequest(create)
+		err = parser.validateCreateRequest(create)
 		require.NoError(t, err)
 	})
 
@@ -209,7 +225,7 @@ func TestValidateCreateRequest(t *testing.T) {
 		require.NoError(t, err)
 		create.SuffixData = ""
 
-		err = validateCreateRequest(create)
+		err = parser.validateCreateRequest(create)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing suffix data")
 	})
@@ -218,7 +234,7 @@ func TestValidateCreateRequest(t *testing.T) {
 		require.NoError(t, err)
 		create.Delta = ""
 
-		err = validateCreateRequest(create)
+		err = parser.validateCreateRequest(create)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "missing delta")
 	})

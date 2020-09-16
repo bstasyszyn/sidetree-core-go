@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/applier"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/cas"
@@ -26,11 +27,10 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/compression"
 	"github.com/trustbloc/sidetree-core-go/pkg/jws"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
-	"github.com/trustbloc/sidetree-core-go/pkg/processor"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/helper"
-	"github.com/trustbloc/sidetree-core-go/pkg/txnhandler"
-	"github.com/trustbloc/sidetree-core-go/pkg/txnhandler/models"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/operation"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/txnhandler"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/txnhandler/models"
 )
 
 //go:generate counterfeiter -o ../mocks/operationqueue.gen.go --fake-name OperationQueue ./cutter OperationQueue
@@ -523,7 +523,7 @@ func newMockProtocolClient() *mocks.MockProtocolClient {
 	pc := mocks.NewMockProtocolClient()
 	parser := operation.NewParser(pc.Protocol)
 	dc := composer.New()
-	oa := processor.NewApplier(pc.Protocol, parser, dc)
+	oa := applier.NewApplier(pc.Protocol, parser, dc)
 
 	pc.CasClient = mocks.NewMockCasClient(nil)
 	th := txnhandler.NewOperationHandler(pc.Protocol, pc.CasClient, compression.New(compression.WithDefaultAlgorithms()))

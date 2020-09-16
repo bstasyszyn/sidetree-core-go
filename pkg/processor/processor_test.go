@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/sidetree-core-go/pkg/composer"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/applier"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
@@ -27,12 +28,12 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/internal/canonicalizer"
 	"github.com/trustbloc/sidetree-core-go/pkg/internal/signutil"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/patch"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/helper"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
 	"github.com/trustbloc/sidetree-core-go/pkg/util/ecsigner"
 	"github.com/trustbloc/sidetree-core-go/pkg/util/pubkey"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/operation"
 )
 
 const (
@@ -141,7 +142,7 @@ func TestResolve(t *testing.T) {
 		err = store.Put(anchoredOp)
 		require.Nil(t, err)
 
-		a := NewApplier(pc.Protocol, parser, composer.New())
+		a := applier.NewApplier(pc.Protocol, parser, composer.New())
 		doc, err := a.ApplyCreateOperation(anchoredOp, &protocol.ResolutionModel{})
 		require.Nil(t, doc)
 		require.Error(t, err)
@@ -447,7 +448,7 @@ func TestUpdateDocument(t *testing.T) {
 		updateOp, _, err := getAnchoredUpdateOperation(updateKey, uniqueSuffix, 1)
 		require.NoError(t, err)
 
-		pc.CurrentVersion.OperationApplierReturns(NewApplier(pc.Protocol, parser, &mockDocComposer{Err: errors.New("document composer error")}))
+		pc.CurrentVersion.OperationApplierReturns(applier.NewApplier(pc.Protocol, parser, &mockDocComposer{Err: errors.New("document composer error")}))
 
 		rm, err = p.applyOperation(updateOp, rm)
 		require.Error(t, err)
@@ -489,7 +490,7 @@ func TestProcessOperation(t *testing.T) {
 		createOp, err := getAnchoredCreateOperation(recoveryKey, updateKey)
 		require.NoError(t, err)
 
-		a := NewApplier(pc.Protocol, parser, &mockDocComposer{})
+		a := applier.NewApplier(pc.Protocol, parser, &mockDocComposer{})
 		doc, err := a.ApplyCreateOperation(createOp, &protocol.ResolutionModel{
 			Doc: make(document.Document),
 		})
@@ -583,7 +584,7 @@ func TestDeactivate(t *testing.T) {
 		err = store.Put(deactivateOp)
 		require.NoError(t, err)
 
-		a := NewApplier(pc.Protocol, parser, &mockDocComposer{})
+		a := applier.NewApplier(pc.Protocol, parser, &mockDocComposer{})
 		doc, err := a.ApplyDeactivateOperation(deactivateOp, &protocol.ResolutionModel{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "deactivate can only be applied to an existing document")
@@ -955,7 +956,7 @@ func TestRecover(t *testing.T) {
 
 		anchoredOp := getAnchoredOperation(recoverOp)
 
-		pc.CurrentVersion.OperationApplierReturns(NewApplier(pc.Protocol, parser, &mockDocComposer{Err: errors.New("doc composer error")}))
+		pc.CurrentVersion.OperationApplierReturns(applier.NewApplier(pc.Protocol, parser, &mockDocComposer{Err: errors.New("doc composer error")}))
 
 		rm, err = p.applyOperation(anchoredOp, rm)
 		require.Error(t, err)
@@ -1732,7 +1733,7 @@ func newMockProtocolClient() *mocks.MockProtocolClient {
 	pc := mocks.NewMockProtocolClient()
 	parser := operation.NewParser(pc.Protocol)
 	dc := composer.New()
-	oa := NewApplier(pc.Protocol, parser, dc)
+	oa := applier.NewApplier(pc.Protocol, parser, dc)
 
 	pv := pc.CurrentVersion
 	pv.OperationParserReturns(parser)

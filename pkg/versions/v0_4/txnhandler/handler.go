@@ -13,7 +13,7 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/api/cas"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/docutil"
-	"github.com/trustbloc/sidetree-core-go/pkg/txnhandler/models"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/txnhandler/models"
 )
 
 type compressionProvider interface {

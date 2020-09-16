@@ -12,15 +12,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/trustbloc/sidetree-core-go/pkg/composer"
-	"github.com/trustbloc/sidetree-core-go/pkg/processor"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/applier"
 
 	"github.com/trustbloc/sidetree-core-go/pkg/api/batch"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/txn"
 	"github.com/trustbloc/sidetree-core-go/pkg/compression"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
-	"github.com/trustbloc/sidetree-core-go/pkg/txnhandler/models"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/operation"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/txnhandler/models"
 )
 
 const compressionAlgorithm = "GZIP"
@@ -508,7 +508,7 @@ func newMockProtocolClient() *mocks.MockProtocolClient {
 	pc := mocks.NewMockProtocolClient()
 	parser := operation.NewParser(pc.Protocol)
 	dc := composer.New()
-	oa := processor.NewApplier(pc.Protocol, parser, dc)
+	oa := applier.NewApplier(pc.Protocol, parser, dc)
 
 	pv := pc.CurrentVersion
 	pv.OperationParserReturns(parser)

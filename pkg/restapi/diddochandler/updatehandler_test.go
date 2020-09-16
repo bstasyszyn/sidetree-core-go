@@ -23,10 +23,10 @@ import (
 	"github.com/trustbloc/sidetree-core-go/pkg/internal/canonicalizer"
 	"github.com/trustbloc/sidetree-core-go/pkg/jws"
 	"github.com/trustbloc/sidetree-core-go/pkg/mocks"
-	"github.com/trustbloc/sidetree-core-go/pkg/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/patch"
-	"github.com/trustbloc/sidetree-core-go/pkg/processor"
 	"github.com/trustbloc/sidetree-core-go/pkg/restapi/model"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/applier"
+	"github.com/trustbloc/sidetree-core-go/pkg/versions/v0_4/operation"
 )
 
 const (
@@ -193,7 +193,7 @@ func newMockProtocolClient() *mocks.MockProtocolClient {
 	pc := mocks.NewMockProtocolClient()
 	parser := operation.NewParser(pc.Protocol)
 	dc := composer.New()
-	oa := processor.NewApplier(pc.Protocol, parser, dc)
+	oa := applier.NewApplier(pc.Protocol, parser, dc)
 
 	pv := pc.CurrentVersion
 	pv.OperationParserReturns(parser)

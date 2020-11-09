@@ -43,18 +43,23 @@ func New(providers *Providers) *TxnProcessor {
 }
 
 // Process persists all of the operations for the given anchor.
-func (p *TxnProcessor) Process(sidetreeTxn txn.SidetreeTxn) error {
+func (p *TxnProcessor) Process(sidetreeTxn *txn.SidetreeTxn) ([]*operation.AnchoredOperation, error) {
 	logger.Debugf("processing sidetree txn:%+v", sidetreeTxn)
 
-	txnOps, err := p.OperationProtocolProvider.GetTxnOperations(&sidetreeTxn)
+	txnOps, err := p.OperationProtocolProvider.GetTxnOperations(sidetreeTxn)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve operations for anchor string[%s]: %s", sidetreeTxn.AnchorString, err)
+		return nil, fmt.Errorf("failed to retrieve operations for anchor string[%s]: %s", sidetreeTxn.AnchorString, err)
 	}
 
-	return p.processTxnOperations(txnOps, sidetreeTxn)
+	err = p.processTxnOperations(txnOps, sidetreeTxn)
+	if err != nil {
+		return nil, err
+	}
+
+	return txnOps, nil
 }
 
-func (p *TxnProcessor) processTxnOperations(txnOps []*operation.AnchoredOperation, sidetreeTxn txn.SidetreeTxn) error {
+func (p *TxnProcessor) processTxnOperations(txnOps []*operation.AnchoredOperation, sidetreeTxn *txn.SidetreeTxn) error {
 	logger.Debugf("processing %d transaction operations", len(txnOps))
 
 	batchSuffixes := make(map[string]bool)
@@ -84,7 +89,7 @@ func (p *TxnProcessor) processTxnOperations(txnOps []*operation.AnchoredOperatio
 	return nil
 }
 
-func updateAnchoredOperation(op *operation.AnchoredOperation, sidetreeTxn txn.SidetreeTxn) *operation.AnchoredOperation {
+func updateAnchoredOperation(op *operation.AnchoredOperation, sidetreeTxn *txn.SidetreeTxn) *operation.AnchoredOperation {
 	//  The logical blockchain time that this operation was anchored on the blockchain
 	op.TransactionTime = sidetreeTxn.TransactionTime
 	// The transaction number of the transaction this operation was batched within

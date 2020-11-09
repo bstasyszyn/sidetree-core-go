@@ -53,7 +53,7 @@ type Protocol struct {
 
 // TxnProcessor defines the functions for processing a Sidetree transaction.
 type TxnProcessor interface {
-	Process(sidetreeTxn txn.SidetreeTxn) error
+	Process(sidetreeTxn *txn.SidetreeTxn) ([]*operation.AnchoredOperation, error)
 }
 
 // OperationParser defines the functions for parsing operations.

@@ -88,17 +88,17 @@ func TestTxnProcessor_Process(t *testing.T) {
 		}
 
 		p := txnprocessor.New(providers)
-		err := p.Process(txn.SidetreeTxn{})
+		_, err := p.Process(&txn.SidetreeTxn{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), errExpected.Error())
 	})
 }
 
 type mockLedger struct {
-	registerForSidetreeTxnValue chan []txn.SidetreeTxn
+	registerForSidetreeTxnValue chan []*txn.SidetreeTxn
 }
 
-func (m mockLedger) RegisterForSidetreeTxn() <-chan []txn.SidetreeTxn {
+func (m mockLedger) RegisterForSidetreeTxn() <-chan []*txn.SidetreeTxn {
 	return m.registerForSidetreeTxnValue
 }
 

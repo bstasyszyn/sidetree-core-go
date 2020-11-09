@@ -18,7 +18,7 @@ var logger = log.New("sidetree-core-observer")
 
 // Ledger interface to access ledger txn.
 type Ledger interface {
-	RegisterForSidetreeTxn() <-chan []txn.SidetreeTxn
+	RegisterForSidetreeTxn() <-chan []*txn.SidetreeTxn
 }
 
 // OperationStore interface to access operation store.
@@ -62,7 +62,7 @@ func (o *Observer) Stop() {
 	o.stopCh <- struct{}{}
 }
 
-func (o *Observer) listen(txnsCh <-chan []txn.SidetreeTxn) {
+func (o *Observer) listen(txnsCh <-chan []*txn.SidetreeTxn) {
 	for {
 		select {
 		case <-o.stopCh:
@@ -82,7 +82,7 @@ func (o *Observer) listen(txnsCh <-chan []txn.SidetreeTxn) {
 	}
 }
 
-func (o *Observer) process(txns []txn.SidetreeTxn) {
+func (o *Observer) process(txns []*txn.SidetreeTxn) {
 	for _, txn := range txns {
 		pc, err := o.ProtocolClientProvider.ForNamespace(txn.Namespace)
 		if err != nil {
@@ -98,7 +98,7 @@ func (o *Observer) process(txns []txn.SidetreeTxn) {
 			continue
 		}
 
-		err = v.TransactionProcessor().Process(txn)
+		_, err = v.TransactionProcessor().Process(txn)
 		if err != nil {
 			logger.Warnf("Failed to process anchor[%s]: %s", txn.AnchorString, err.Error())
 

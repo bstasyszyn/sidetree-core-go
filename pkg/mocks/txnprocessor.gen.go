@@ -4,6 +4,7 @@ package mocks
 import (
 	"sync"
 
+	"github.com/trustbloc/sidetree-core-go/pkg/api/operation"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/protocol"
 	"github.com/trustbloc/sidetree-core-go/pkg/api/txn"
 )
@@ -24,7 +25,7 @@ type TxnProcessor struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *TxnProcessor) Process(arg1 txn.SidetreeTxn) error {
+func (fake *TxnProcessor) Process(sidetreeTxn *txn.SidetreeTxn) ([]*operation.AnchoredOperation, error) {
 	fake.processMutex.Lock()
 	ret, specificReturn := fake.processReturnsOnCall[len(fake.processArgsForCall)]
 	fake.processArgsForCall = append(fake.processArgsForCall, struct {
